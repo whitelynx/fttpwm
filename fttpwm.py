@@ -1,9 +1,19 @@
 # Really, really ugly notes on how to start out...
 
+import logging
+import os
+
 import xcb
 import xcb.xproto
 import xcb.render
 
+import xpybutil
+import xpybutil.event as event
+import xpybutil.ewmh as ewmh
+import xpybutil.keybind as keybind
+
+
+logger = logging.getLogger("fttpwm")
 
 xConnParams = {
         # By default, xcb will use the DISPLAY and XAUTHORITY environment variables, so you shouldn't need these.
@@ -37,6 +47,76 @@ dpy.screen().root.grab_button(1, X.Mod1Mask, 1, X.ButtonPressMask|X.ButtonReleas
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
 dpy.screen().root.grab_button(3, X.Mod1Mask, 1, X.ButtonPressMask|X.ButtonReleaseMask|X.PointerMotionMask,
         X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+
+
+def mark_window():
+    captureLetter(do_mark_window)
+
+
+def goto_window():
+    captureLetter(do_goto_window)
+
+
+captureCallbacks = []
+
+
+class GetCharacterCallback(object):
+    def __init__(self, callback, range=None):
+        self.callback = callback
+        self.range = range
+
+    def __call__(self, keycode, keysym):
+        letter = keybind.get_keysym_string(keysym)
+        if len(letter) == 1 and (self.range is None or ord(letter) in self.range):
+            self.callback(letter.lower())
+            return False
+        return True
+
+
+def captureLetter(callback):
+    captureKeypresses(GetCharacterCallback(callback, range=range(ord('a'), ord('z') + 1)))
+
+
+def captureKeypresses(callback):
+    global captureCallbacks
+
+    GS = xcb.xproto.GrabStatus
+    if keybind.grab_keyboard(xpybutil.root).status == GS.Success:
+        captureCallbacks.append(callback)
+
+
+def keypressHandler(e):
+    global grabbing
+
+    if len(captureCallbacks) > 0:
+        cb = captureCallbacks[-1]
+        keycode = e.detail
+        keysym = keybind.get_keysym(e.detail)
+
+        if not cb(keycode, keysym):
+            captureCallbacks.pop()
+
+            if len(captureCallbacks) == 0:
+                keybind.ungrab_keyboard()
+
+
+settingsFile = os.path.expanduser("~/.fttpwm.py")
+settings = {}
+
+execfile(settingsFile, globals={}, locals=settings)
+
+
+# This has to come first so it is called first in the event loop
+event.connect('KeyPress', xpybutil.root, keypressHandler)
+
+for key_str, func in settings['keys'].iteritems():
+    if not keybind.bind_global_key('KeyPress', key_str, func):
+        logger.error('Could not bind %s to %r!', key_str, func)
+
+event.main()
+
+
+#######################################################################################################################
 
 
 def find_format(screen):

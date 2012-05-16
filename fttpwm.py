@@ -1,5 +1,6 @@
 # Really, really ugly notes on how to start out...
 
+from argparse import Namespace
 import logging
 import os
 
@@ -9,8 +10,9 @@ import xcb.render
 
 import xpybutil
 import xpybutil.event as event
-import xpybutil.ewmh as ewmh
+#import xpybutil.ewmh as ewmh
 import xpybutil.keybind as keybind
+import xpybutil.mousebind as mousebind
 
 
 logger = logging.getLogger("fttpwm")
@@ -41,12 +43,49 @@ window = conn.generate_id()
 pid = conn.generate_id()
 
 
-dpy.screen().root.grab_key(dpy.keysym_to_keycode(XK.string_to_keysym("F1")), X.Mod1Mask, 1,
-        X.GrabModeAsync, X.GrabModeAsync)
-dpy.screen().root.grab_button(1, X.Mod1Mask, 1, X.ButtonPressMask|X.ButtonReleaseMask|X.PointerMotionMask,
-        X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
-dpy.screen().root.grab_button(3, X.Mod1Mask, 1, X.ButtonPressMask|X.ButtonReleaseMask|X.PointerMotionMask,
-        X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+def processBinding(binding):
+    if isinstance(binding, (tuple, list)):
+        return Namespace(
+                onPress=binding[0],
+                onRelease=binding[1] if len(binding) > 1 else None,
+                onMotion=binding[2] if len(binding) > 2 else None
+                )
+    elif isinstance(binding, dict):
+        return Namespace(**binding)
+    else:
+        return Namespace(onPress=binding)
+
+
+def bindKeys(bindings):
+    for keyString, binding in bindings.iteritems():
+        binding = processBinding(binding)
+
+        if binding.onPress is not None:
+            if not keybind.bind_global_key('KeyPress', keyString, binding.onPress):
+                logger.error("Couldn't bind key press %s to %r!", keyString, binding.onPress)
+
+        if binding.onRelease is not None:
+            if not keybind.bind_global_key('KeyRelease', keyString, binding.onRelease):
+                logger.error("Couldn't bind key release %s to %r!", keyString, binding.onRelease)
+
+
+def bindMouse(bindings):
+    for buttonString, binding in bindings.iteritems():
+        binding = processBinding(binding)
+
+        mods, button = mousebind.parse_buttonstring(buttonString)
+        if not mousebind.grab_button(xpybutil.root, mods, button).status:
+            logger.error("Couldn't grab mouse button %r!", buttonString)
+            return
+
+        if binding.onPress is not None:
+            event.connect('ButtonPress', xpybutil.root, binding.onPress)
+
+        if binding.onRelease is not None:
+            event.connect('ButtonRelease', xpybutil.root, binding.onRelease)
+
+        if binding.onMotion is not None:
+            event.connect('MotionNotify', xpybutil.root, binding.onMotion)
 
 
 def mark_window():
@@ -73,16 +112,16 @@ class GetCharacterCallback(object):
         return True
 
 
-def captureLetter(callback):
-    captureKeypresses(GetCharacterCallback(callback, range=range(ord('a'), ord('z') + 1)))
-
-
 def captureKeypresses(callback):
     global captureCallbacks
 
     GS = xcb.xproto.GrabStatus
     if keybind.grab_keyboard(xpybutil.root).status == GS.Success:
         captureCallbacks.append(callback)
+
+
+def captureLetter(callback):
+    captureKeypresses(GetCharacterCallback(callback, range=range(ord('a'), ord('z') + 1)))
 
 
 def keypressHandler(e):
@@ -100,7 +139,16 @@ def keypressHandler(e):
                 keybind.ungrab_keyboard()
 
 
-settingsFile = os.path.expanduser("~/.fttpwm.py")
+settingsFiles = (
+        os.path.expanduser("~/.fttpwmrc.py"),
+        "/etc/fttpwmrc.py",
+        os.path.join(os.path.dirname(__file__), "default_fttpwmrc.py")
+        )
+
+for filename in settingsFiles:
+    if os.path.exists(filename):
+        settingsFile = filename
+
 settings = {}
 
 execfile(settingsFile, globals={}, locals=settings)

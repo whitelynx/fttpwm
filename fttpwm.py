@@ -2,7 +2,7 @@
 
 from argparse import Namespace
 import logging
-import os
+from os.path import expanduser, join, dirname, exists
 
 import xcb
 import xcb.xproto
@@ -17,30 +17,13 @@ import xpybutil.mousebind as mousebind
 
 logger = logging.getLogger("fttpwm")
 
-xConnParams = {
-        # By default, xcb will use the DISPLAY and XAUTHORITY environment variables, so you shouldn't need these.
-        #'display': ':0.0',
-        #'fd': 3,
-        #'auth': 'NAME:binary-data',
-        }
-
-conn = xcb.connect(**xConnParams)
-
-conn.pref_screen
-conn.flush()
-conn.wait_for_event()
-conn.generate_id()
-conn.get_setup()
-
-conn.render = conn(xcb.render.key)
-
-setup = conn.get_setup()
+setup = xpybutil.conn.get_setup()
 root = setup.roots[0].root
 depth = setup.roots[0].root_depth
 visual = setup.roots[0].root_visual
 
-window = conn.generate_id()
-pid = conn.generate_id()
+window = xpybutil.conn.generate_id()
+pid = xpybutil.conn.generate_id()
 
 
 def processBinding(binding):
@@ -88,14 +71,6 @@ def bindMouse(bindings):
             event.connect('MotionNotify', xpybutil.root, binding.onMotion)
 
 
-def mark_window():
-    captureLetter(do_mark_window)
-
-
-def goto_window():
-    captureLetter(do_goto_window)
-
-
 captureCallbacks = []
 
 
@@ -139,19 +114,31 @@ def keypressHandler(e):
                 keybind.ungrab_keyboard()
 
 
-settingsFiles = (
-        os.path.expanduser("~/.fttpwmrc.py"),
+defaultRcFileLocations = (
+        expanduser("~/.fttpwmrc.py"),
         "/etc/fttpwmrc.py",
-        os.path.join(os.path.dirname(__file__), "default_fttpwmrc.py")
+        join(dirname(__file__), "default_fttpwmrc.py")
         )
 
-for filename in settingsFiles:
-    if os.path.exists(filename):
-        settingsFile = filename
 
-settings = {}
+settings = Namespace()
 
-execfile(settingsFile, globals={}, locals=settings)
+
+def loadSettings(filenames=defaultRcFileLocations):
+    global settings
+    for filename in filenames:
+        if exists(filename):
+            settingsFile = filename
+
+    settings = {}
+
+    # Load settings
+    execfile(settingsFile, globals={}, locals=settings)
+
+    settings = Namespace(settings)
+
+
+loadSettings()
 
 
 # This has to come first so it is called first in the event loop

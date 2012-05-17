@@ -3,7 +3,7 @@ from os.path import expanduser, join, dirname, exists
 import logging
 
 
-logger = logging.getLogger("fttpwm.bind")
+logger = logging.getLogger("fttpwm.settings")
 
 
 defaultRcFileLocations = (

@@ -1,5 +1,5 @@
-from fttpwm.bind import bindKeys, bindMouse
-from fttpwm.mouse import moveWindow, resizeWindow
+from fttpwm.keyboard import bindKeys
+from fttpwm.mouse import bindMouse, moveWindow, resizeWindow
 from fttpwm.util import startApp
 
 

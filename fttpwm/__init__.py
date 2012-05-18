@@ -54,7 +54,8 @@ def startup():
             xcb.proto.WindowClass.InputOutput,
             visual,
             xcb.proto.CW.BackPixel | xcb.proto.CW.xcb.proto.EventMask,
-            [white, xcb.proto.EventMask.ButtonPress | xcb.proto.EventMask.EnterWindow | xcb.proto.EventMask.LeaveWindow | xcb.proto.EventMask.Exposure]
+            [white, xcb.proto.EventMask.ButtonPress | xcb.proto.EventMask.EnterWindow | xcb.proto.EventMask.LeaveWindow
+                | xcb.proto.EventMask.Exposure]
             )
 
     cookie = conn.render.QueryPictFormats()

@@ -1,3 +1,9 @@
+"""FTTPWM: Main application
+
+Copyright (c) 2012 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+"""
 import logging
 
 import xpybutil
@@ -6,8 +12,6 @@ import xpybutil.event as event
 
 from .settings import settings
 
-
-assert __name__ == '__main__'
 
 # Monochrome logging
 #logging.basicConfig(level=logging.NOTSET, format="[%(levelname)-8s] %(name)s:  %(message)s")

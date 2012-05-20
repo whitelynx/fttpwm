@@ -14,5 +14,11 @@ def processBinding(binding):
                 )
     elif isinstance(binding, dict):
         return Namespace(**binding)
+    elif callable(binding):
+        return Namespace(
+                onPress=binding,
+                onRelease=None,
+                onMotion=None
+                )
     else:
-        return Namespace(onPress=binding)
+        return binding

@@ -152,6 +152,10 @@ resizeWindow = _ResizeWindow()
 
 
 def raiseWindow(event):
+    """Raise the selected window.
+
+    """
     xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
         ConfigWindow.StackMode: StackMode.Above
         }))
+    xpybutil.conn.flush()

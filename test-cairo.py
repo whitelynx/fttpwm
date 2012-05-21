@@ -36,8 +36,8 @@ class App(object):
         self.visualID = self.screen.root_visual
         self.visual = self._findCurrentVisual()
 
-        self.white = self.setup.roots[0].white_pixel
-        self.black = self.setup.roots[0].black_pixel
+        self.white = self.screen.white_pixel
+        self.black = self.screen.black_pixel
 
         self.windows = dict()
         self.titlebar = Window(self, "This is a Python/Cairo/XCB example!")
@@ -94,6 +94,7 @@ class App(object):
                 self.logger.debug('Leave %r', (event.event_x, event.event_y))
 
             elif isinstance(event, ButtonPressEvent):
+                self._debugEventContents(event)
                 button = event.detail
                 self.logger.debug('Button %d down', button)
                 if button == 1:
@@ -101,6 +102,7 @@ class App(object):
                     break
 
             elif isinstance(event, KeyPressEvent):
+                self._debugEventContents(event)
                 key = event.detail
                 self.logger.debug('Key %s down; state: %r', key, event.state)
 

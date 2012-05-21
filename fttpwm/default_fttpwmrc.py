@@ -1,5 +1,5 @@
 from fttpwm.keyboard import bindKeys
-from fttpwm.mouse import bindMouse, raiseWindow, moveWindow, resizeWindow
+from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
 from fttpwm.utils import startApp, quit
 
 
@@ -12,6 +12,6 @@ bindKeys({
 
 bindMouse({
         '1': raiseWindow,
-        META + '1': moveWindow,
-        META + '3': resizeWindow,
+        META + '1': raiseAndMoveWindow,
+        META + '3': raiseAndResizeWindow,
         })

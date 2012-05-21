@@ -1,7 +1,11 @@
+import logging
 import shlex
 import struct
 import subprocess
 import sys
+
+
+logger = logging.getLogger("fttpwm.utils")
 
 
 def startApp(*command, **kwargs):
@@ -13,7 +17,11 @@ def startApp(*command, **kwargs):
     if len(command) == 1 and isinstance(command[0], basestring):
         command = shlex.split(command[0])
 
-    return lambda *event: subprocess.Popen(command, close_fds=True, **kwargs).pid
+    def startApp_(*event):
+        logger.debug("Starting application: %r", command)
+        subprocess.Popen(command, close_fds=True, **kwargs).pid
+
+    return startApp_
 
 
 def convertAttributes(attributes):
@@ -30,6 +38,7 @@ def convertAttributes(attributes):
 
 
 def quit(*event):
+    logger.debug("Exiting.")
     sys.exit(0)
 
 

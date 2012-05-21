@@ -233,6 +233,7 @@ def _combine(action1, action2):
                 super(Combined, self).onPress(event)
 
     Combined.__name__ = '{}_and_{}'.format(action1.__name__.strip('_'), Action2Class.__name__.strip('_'))
+    return Combined()
 
 
 def _raise(event):

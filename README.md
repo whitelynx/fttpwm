@@ -19,6 +19,21 @@ Requirements
 [py2cairo]: http://cairographics.org/pycairo
 
 
+Configuration
+-------------
+FTTPWM can be configured by creating a `~/.fttpwmrc.py` file; I suggest you copy `fttpwm/default_fttpwmrc.py` and
+modify as needed.
+
+
+Usage
+-----
+Because this is really light on features and probably pretty unstable at the moment, I suggest not using it as your
+day-to-day window manager. If you still want to play around with it, Xephyr (or Xnest if you don't have Xephyr) works
+quite well as a testbed:
+
+	startx $(which python2) -m fttpwm -- $(which Xephyr) :1 -screen 1024x768
+
+
 License
 -------
 FTTPWM is released under the [MIT License][]. See the `LICENSE` file for details.

@@ -29,51 +29,14 @@ def bindKeys(bindings):
         logger.debug("Binding key %r.", keyString)
 
         if binding.onPress is not None:
-            logger.debug("Binding KeyPress event to onPress")
+            logger.debug("Binding KeyPress event to onPress (%r)", binding.onPress)
             if not keybind.bind_global_key('KeyPress', keyString, binding.onPress):
                 logger.error("Couldn't bind key press %s to %r!", keyString, binding.onPress)
 
         if binding.onRelease is not None:
-            logger.debug("Binding KeyRelease event to onRelease")
+            logger.debug("Binding KeyRelease event to onRelease (%r)", binding.onRelease)
             if not keybind.bind_global_key('KeyRelease', keyString, binding.onRelease):
                 logger.error("Couldn't bind key release %s to %r!", keyString, binding.onRelease)
-
-
-class FilteredHandler(object):
-    debugDetailMismatch = False
-    debugModifierMismatch = False
-
-    def __init__(self, handler, detail, modifiers=0):
-        self.handler = handler
-        self.detail = detail
-        self.modifiers = modifiers
-
-    def __call__(self, event):
-        if event.detail != self.detail:
-            if self.debugDetailMismatch:
-                logger.debug("FilteredHandler({!r}, {!r}, {!r}): "
-                        "event.detail != self.detail ({} != {}); ignoring event!".format(
-                            self.handler, self.detail, self.modifiers,
-                            *map(bin, (event.detail, self.detail))
-                            )
-                        )
-            return
-
-        if event.state & ~settings.ignoredModifiers != self.modifiers:
-            if self.debugModifierMismatch:
-                logger.debug("FilteredHandler({!r}, {!r}, {!r}): "
-                        "event.state & ~settings.ignoredModifiers != self.modifiers "
-                        "({} & ~{} != {}; ~{} = {}; {} & ~{} = {}); ignoring event!".format(
-                            self.handler, self.detail, self.modifiers,
-                            *map(bin, (event.state, settings.ignoredModifiers, self.modifiers,
-                                settings.ignoredModifiers, ~settings.ignoredModifiers,
-                                event.state, settings.ignoredModifiers, event.state & ~settings.ignoredModifiers)
-                                )
-                            )
-                        )
-            return
-
-        return self.handler(event)
 
 
 class GetCharacterCallback(object):

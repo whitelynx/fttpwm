@@ -6,11 +6,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 """
 import logging
 
-import xpybutil
-import xpybutil.event as event
-#import xpybutil.ewmh as ewmh
-
-from .settings import settings
+from .wm import WM
 
 
 # Monochrome logging
@@ -26,15 +22,5 @@ logging.basicConfig(level=logging.NOTSET,
 
 logger = logging.getLogger("fttpwm")
 
-setup = xpybutil.conn.get_setup()
-root = setup.roots[0].root
-depth = setup.roots[0].root_depth
-visual = setup.roots[0].root_visual
 
-window = xpybutil.conn.generate_id()
-pid = xpybutil.conn.generate_id()
-
-
-settings.loadSettings()
-
-event.main()
+WM().run()

@@ -7,8 +7,7 @@ import xpybutil
 import xpybutil.event as event
 import xpybutil.mousebind as mousebind
 
-from .bind import processBinding
-from .keyboard import FilteredHandler
+from .bind import processBinding, FilteredHandler
 from .utils import convertAttributes, signedToUnsigned16
 
 
@@ -17,13 +16,13 @@ logger = logging.getLogger("fttpwm.mouse")
 captureCallbacks = []
 
 
-def bindMouse(bindings):
+def bindMouse(bindings, context=xpybutil.root):
     for buttonString, binding in bindings.iteritems():
         binding = processBinding(binding)
         buttonString = buttonString.replace('+', '-')
 
         mods, button = mousebind.parse_buttonstring(buttonString)
-        if not mousebind.grab_button(xpybutil.root, mods, button):
+        if not mousebind.grab_button(context, mods, button):
             logger.error("Couldn't grab mouse button %r!", buttonString)
             return
 
@@ -31,22 +30,35 @@ def bindMouse(bindings):
 
         if binding.onPress is not None:
             logger.debug("Binding ButtonPress event to onPress (%r)", binding.onPress)
-            event.connect('ButtonPress', xpybutil.root, FilteredHandler(binding.onPress, button, mods))
+            event.connect('ButtonPress', context, FilteredHandler(binding.onPress, button, mods))
 
         # After the button has been pressed, it will show up in the modifiers.
         mods |= getattr(ButtonMask, '_{}'.format(button))
 
-        if binding.onRelease is not None:
+        if hasattr(binding, 'onRelease') and binding.onRelease is not None:
             logger.debug("Binding ButtonRelease event to onRelease (%r)", binding.onRelease)
-            event.connect('ButtonRelease', xpybutil.root, FilteredHandler(binding.onRelease, button, mods))
+            event.connect('ButtonRelease', context, FilteredHandler(binding.onRelease, button, mods))
 
-        if binding.onMotion is not None:
+        if hasattr(binding, 'onMotion') and binding.onMotion is not None:
             logger.debug("Binding MotionNotify event to onMotion (%r)", binding.onMotion)
             # Motion events always have 0 in event.detail.
-            event.connect('MotionNotify', xpybutil.root, FilteredHandler(binding.onMotion, 0, mods))
+            event.connect('MotionNotify', context, FilteredHandler(binding.onMotion, 0, mods))
 
 
-class MouseDragAction(object):
+class KeyOrButtonAction(object):
+    def onPress(self, event):
+        pass
+
+    def onRelease(self, event):
+        pass
+
+
+class MouseMoveAction(KeyOrButtonAction):
+    def onMotion(self, event):
+        pass
+
+
+class MouseDragAction(MouseMoveAction):
     CancelDrag = object()
 
     def __init__(self, onStart=None, onUpdate=None, onFinish=None):
@@ -67,9 +79,17 @@ class MouseDragAction(object):
             self.active = True
             self.dragStart = event.root_x, event.root_y
 
+        else:
+            self.onFinishDrag(0, 0, event, True)
+
     def onRelease(self, event):
         if self.active:
-            self.onFinishDrag(event)
+            # See how the pointer has moved relative to the root window.
+            startX, startY = self.dragStart
+            xDiff = event.root_x - startX
+            yDiff = event.root_y - startY
+
+            self.onFinishDrag(xDiff, yDiff, event, False)
             logger.debug("%s: Drag finished.", self.__class__.__name__)
 
             self.active = False
@@ -77,30 +97,45 @@ class MouseDragAction(object):
 
     def onMotion(self, event):
         if self.active:
-            startX, startY = self.dragStart
-
             # See how the pointer has moved relative to the root window.
+            startX, startY = self.dragStart
             xDiff = event.root_x - startX
             yDiff = event.root_y - startY
 
-            self.onUpdateDrag(xDiff, yDiff, event)
+            if self.onUpdateDrag(xDiff, yDiff, event) is self.CancelDrag:
+                self.onFinishDrag(xDiff, yDiff, event, True)
 
     def onStartDrag(self, event):
+        """Override this method in subclasses to do something when a drag starts.
+
+        Return self.CancelDrag to prevent the drag from continuing.
+
+        """
         pass
 
     def onUpdateDrag(self, xDiff, yDiff, event):
+        """Override this method in subclasses to do something when a drag starts.
+
+        Return self.CancelDrag to prevent the drag from continuing.
+
+        """
         pass
 
-    def onFinishDrag(self, event):
+    def onFinishDrag(self, xDiff, yDiff, event, canceled):
+        """Override this method in subclasses to do something when the drag finishes.
+
+        If canceled == True, this drag was canceled by onStartDrag or onUpdateDrag returning self.CancelDrag.
+
+        """
         pass
 
 
-class _MoveWindow(MouseDragAction):
-    """Move the focused window with the mouse.
+class WindowDragAction(MouseDragAction):
+    """A drag action that has to do with the window over which the drag started.
 
     """
     def __init__(self):
-        super(_MoveWindow, self).__init__()
+        super(WindowDragAction, self).__init__()
         self.window = None
         self._initialGeometry = None
         self.initialGeometryCookie = None
@@ -114,13 +149,39 @@ class _MoveWindow(MouseDragAction):
         return self._initialGeometry
 
     def onStartDrag(self, event):
+        """Override this method in subclasses to do something when a drag starts.
+
+        Don't forget to call super(YourClass, self).onStartDrag(event)!
+
+        """
         if event.child != xcb.NONE:
             self.window = event.child
             self.initialGeometryCookie = xpybutil.conn.core.GetGeometry(self.window)
+            xpybutil.conn.flush()
 
         else:
             return self.CancelDrag
 
+    def onUpdateDrag(self, xDiff, yDiff, event):
+        """Override this method in subclasses to do something while the drag is happening.
+
+        """
+        pass
+
+    def onFinishDrag(self, xDiff, yDiff, event, canceled):
+        """Override this method in subclasses to do something when the drag finishes.
+
+        Don't forget to call super(YourClass, self).onFinishDrag(xDiff, yDiff, event, canceled)!
+
+        """
+        self.window = None
+        self._initialGeometry = None
+
+
+class _MoveWindow(WindowDragAction):
+    """Move the focused window with the mouse.
+
+    """
     def onUpdateDrag(self, xDiff, yDiff, event):
         x = self.initialGeometry.x + xDiff
         y = self.initialGeometry.y + yDiff
@@ -130,14 +191,12 @@ class _MoveWindow(MouseDragAction):
                 }))
         xpybutil.conn.flush()
 
-    def onFinishDrag(self, event):
-        self.window = None
-        self._initialGeometry = None
-
+#FIXME: Should we be using the classes as factories instead of singletons? Is there different state we need to store in
+# each binding?
 moveWindow = _MoveWindow()
 
 
-class _ResizeWindow(_MoveWindow):
+class _ResizeWindow(WindowDragAction):
     """Resize the focused window with the mouse.
 
     """
@@ -151,11 +210,53 @@ class _ResizeWindow(_MoveWindow):
 resizeWindow = _ResizeWindow()
 
 
-def raiseWindow(event):
+def _combine(action1, action2):
+    if isinstance(action2, type):
+        Action2Class = action2
+    else:
+        Action2Class = action2.__class__
+
+    if issubclass(Action2Class, MouseDragAction):
+        class Combined(Action2Class):
+            def onStartDrag(self, event):
+                action1(event)
+
+                super(Combined, self).onStartDrag(event)
+
+    else:
+        assert issubclass(Action2Class, KeyOrButtonAction)
+
+        class Combined(Action2Class):
+            def onPress(self, event):
+                action1(event)
+
+                super(Combined, self).onPress(event)
+
+    Combined.__name__ = '{}_and_{}'.format(action1.__name__.strip('_'), Action2Class.__name__.strip('_'))
+
+
+def _raise(event):
+    if event.child != xcb.NONE:
+        xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
+            ConfigWindow.StackMode: StackMode.Above
+            }))
+        xpybutil.conn.flush()
+
+
+def _raiseAnd(Action2):
+    return _combine(_raise, Action2)
+
+
+raiseAndMoveWindow = _raiseAnd(_MoveWindow)
+
+raiseAndResizeWindow = _raiseAnd(_ResizeWindow)
+
+
+class _RaiseWindow(KeyOrButtonAction):
     """Raise the selected window.
 
     """
-    xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
-        ConfigWindow.StackMode: StackMode.Above
-        }))
-    xpybutil.conn.flush()
+    def onPress(self, event):
+        _raise(event)
+
+raiseWindow = _RaiseWindow()

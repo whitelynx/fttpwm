@@ -7,10 +7,12 @@ Licensed under the MIT license; see the LICENSE file for details.
 """
 import logging
 import os
+import struct
 import sys
 
 import xcb
-from xcb.xproto import CW, ConfigWindow, EventMask, InputFocus, SetMode, StackMode, WindowClass
+from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
+from xcb.xproto import MappingNotifyEvent, MapRequestEvent
 
 import xpybutil
 import xpybutil.event as event
@@ -85,6 +87,12 @@ class EWMHWindowType(object):
     Normal = atom('_NET_WM_WINDOW_TYPE_NORMAL')
 
 
+class Color(object):
+    @staticmethod
+    def float(*components):
+        return map(lambda x: int(x * 2 ** 16), components)
+
+
 class WM(object):
     def __init__(self):
         self.setup = xpybutil.conn.get_setup()
@@ -95,10 +103,13 @@ class WM(object):
         self.visual = self.findCurrentVisual()
         self.desktopWidth = self.screen.width_in_pixels
         self.desktopHeight = self.screen.height_in_pixels
-        print(self.screen.default_colormap)
+        self.colormap = self.screen.default_colormap
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
+
+        self.focusedBorderColor = self.allocColor(Color.float(.25, .5, 0))
+        self.unfocusedBorderColor = self.allocColor(Color.float(.25, .25, .25))
 
         self.windows = list()
         self.focusedWindow = None
@@ -118,6 +129,14 @@ class WM(object):
                 for visual in depth.visuals:
                     if visual.visual_id == self.visualID:
                         return visual
+
+    def allocColor(self, color):
+        """Allocate the given color and return its XID.
+
+        `color` must be a tuple `(r, g, b)` where `r`, `g`, and `b` are between 0 and 1.
+
+        """
+        return xpybutil.conn.core.AllocColor(self.colormap, *color).reply().pixel
 
     def checkForOtherWMs(self):
         logger.debug("Checking for other window managers...")
@@ -139,9 +158,23 @@ class WM(object):
                 checked=True
                 )
         cookie.check()
+
+        pid = os.getpid()
+        logger.debug(
+                "Setting up EWMH _NET_SUPPORTING_WM child window. (ID=%r, _NET_WM_PID=%r, _NET_WM_NAME=%r, "
+                "_NET_SUPPORTING_WM_CHECK=%r)",
+                self.ewmhChildWindow, pid, 'FTTPWM', self.ewmhChildWindow
+                )
         ewmh.set_supporting_wm_check(self.ewmhChildWindow, self.ewmhChildWindow)
         ewmh.set_wm_name(self.ewmhChildWindow, 'FTTPWM')
-        ewmh.set_wm_pid(self.ewmhChildWindow, os.getpid())
+        try:
+            ewmh.set_wm_pid(self.ewmhChildWindow, pid)
+        except OverflowError:
+            #XXX: HACK to work around broken code in xpybutil.ewmh:
+            packed = struct.pack('I', pid)
+            xpybutil.conn.core.ChangeProperty(PropMode.Replace, self.ewmhChildWindow, atom('_NET_WM_PID'),
+                    Atom.CARDINAL, 32, 1, packed)
+            #/HACK
 
         self.setWMProps()
         self.setDesktopProps()
@@ -218,8 +251,8 @@ class WM(object):
         """A convenience method to create new windows.
 
         The major advantage of this is the ability to use a dictionary to specify window attributes; this eliminates
-        the need to figure out what order to specify values in according to the numeric values of the 'CW' enum members
-        you're using.
+        the need to figure out what order to specify values in according to the numeric values of the 'CW' or
+        'ConfigWindow' enum members you're using.
 
         """
         if windowID is None:
@@ -231,7 +264,7 @@ class WM(object):
         attribMask = 0
         attribValues = list()
 
-        # Values must be sorted by CW enum value, ascending.
+        # Values must be sorted by CW or ConfigWindow enum value, ascending.
         # Luckily, the tuples we get from dict.iteritems will automatically sort correctly.
         for attrib, value in sorted(attributes.iteritems()):
             attribMask |= attrib
@@ -377,16 +410,54 @@ class WM(object):
             xpybutil.conn.core.ConfigureWindow(self.focusedWindow, *convertAttributes({
                     ConfigWindow.BorderWidth: 0,
                     }))
+            xpybutil.conn.core.ChangeWindowAttributes(self.focusedWindow, *convertAttributes({
+                    CW.BorderPixel: self.unfocusedBorderColor
+                    }))
 
         self.focusedWindow = window
         xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, window, xcb.CurrentTime)
         xpybutil.conn.core.ConfigureWindow(self.focusedWindow, *convertAttributes({
                 ConfigWindow.BorderWidth: 2,
                 }))
+        xpybutil.conn.core.ChangeWindowAttributes(self.focusedWindow, *convertAttributes({
+                CW.BorderPixel: self.focusedBorderColor
+                }))
         ewmh.set_active_window(window)
         xpybutil.conn.flush()
 
     def run(self):
         logger.info("Starting main event loop.")
-        event.main()
+
+        #event.main()
+        #XXX: HACK to work around the fact that xpybutil.event will never send us MapNotify, even if we've subscribed
+        # to SubstructureRedirect. And yes, this is a direct copy of event.main with some minor changes.
+        try:
+            while True:
+                event.read(block=True)
+                for e in event.queue():
+                    w = None
+                    if isinstance(e, MappingNotifyEvent):
+                        w = None
+                    elif isinstance(e, MapRequestEvent):
+                        w = self.root
+                    elif hasattr(e, 'window'):
+                        w = e.window
+                    elif hasattr(e, 'event'):
+                        w = e.event
+                    elif hasattr(e, 'requestor'):
+                        w = e.requestor
+
+                    key = (e.__class__, w)
+                    for cb in getattr(event, '__callbacks').get(key, []):
+                        try:
+                            cb(e)
+                        except Exception:
+                            logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
+                                    cb, e.__class__, w)
+
+        except xcb.Exception:
+            logger.exception("Error in main event loop!")
+            sys.exit(1)
+        #/HACK
+
         logger.info("Event loop terminated; shutting down.")

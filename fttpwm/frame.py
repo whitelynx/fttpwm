@@ -78,7 +78,7 @@ class WindowFrame(object):
 
         self.windowAttributes = {
                 CW.OverrideRedirect: 1,
-                CW.BackPixel: wm.white,
+                CW.BackPixel: wm.unfocusedBorderColor,
                 }
 
         # Start fetching some information about the client window.
@@ -203,12 +203,22 @@ class WindowFrame(object):
         self.focused = True
         self.wm_states.append(atom('_NET_WM_STATE_FOCUSED'))
         ewmh.set_wm_state(self.clientWindow, self.wm_states)
+
+        xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
+                CW.BackPixel: self.wm.focusedBorderColor,
+                })).check()
+
         self.applyTheme()
 
     def onLostFocus(self):
         self.focused = False
         self.wm_states.remove(atom('_NET_WM_STATE_FOCUSED'))
         ewmh.set_wm_state(self.clientWindow, self.wm_states)
+
+        xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
+                CW.BackPixel: self.wm.unfocusedBorderColor,
+                })).check()
+
         self.applyTheme()
 
     def applyTheme(self):

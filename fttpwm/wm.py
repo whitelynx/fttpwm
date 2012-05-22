@@ -15,13 +15,14 @@ from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, 
 from xcb.xproto import MappingNotifyEvent, MapRequestEvent
 
 import xpybutil
-import xpybutil.event as event
+import xpybutil.event
 import xpybutil.ewmh as ewmh
 from xpybutil.util import get_atom as atom
 import xpybutil.window
 
 from .settings import settings
 from .utils import convertAttributes
+from .xevents import SelectionNotifyEvent
 
 
 logger = logging.getLogger("fttpwm.wm")
@@ -95,8 +96,11 @@ class Color(object):
 
 class WM(object):
     def __init__(self):
+        self.pid = os.getpid()
+
         self.setup = xpybutil.conn.get_setup()
-        self.screen = self.setup.roots[xpybutil.conn.pref_screen]
+        self.screenNumber = xpybutil.conn.pref_screen
+        self.screen = self.setup.roots[self.screenNumber]
         self.root = self.screen.root
         self.depth = self.screen.root_depth
         self.visualID = self.screen.root_visual
@@ -159,24 +163,8 @@ class WM(object):
                 )
         cookie.check()
 
-        pid = os.getpid()
-        logger.debug(
-                "Setting up EWMH _NET_SUPPORTING_WM child window. (ID=%r, _NET_WM_PID=%r, _NET_WM_NAME=%r, "
-                "_NET_SUPPORTING_WM_CHECK=%r)",
-                self.ewmhChildWindow, pid, 'FTTPWM', self.ewmhChildWindow
-                )
-        ewmh.set_supporting_wm_check(self.ewmhChildWindow, self.ewmhChildWindow)
-        ewmh.set_wm_name(self.ewmhChildWindow, 'FTTPWM')
-        try:
-            ewmh.set_wm_pid(self.ewmhChildWindow, pid)
-        except OverflowError:
-            #XXX: HACK to work around broken code in xpybutil.ewmh:
-            packed = struct.pack('I', pid)
-            xpybutil.conn.core.ChangeProperty(PropMode.Replace, self.ewmhChildWindow, atom('_NET_WM_PID'),
-                    Atom.CARDINAL, 32, 1, packed)
-            #/HACK
-
-        self.setWMProps()
+        self.setWMChildProps()
+        self.setRootProps()
         self.setDesktopProps()
 
         logger.debug("startManaging: Subscribing to events.")
@@ -188,10 +176,41 @@ class WM(object):
 
         logger.debug("startManaging: Reticulating splines.")
 
-        event.connect('EnterNotify', self.root, self.onEnterNotify)
-        event.connect('MapRequest', self.root, self.onMapRequest)
+        xpybutil.event.connect('EnterNotify', self.root, self.onEnterNotify)
+        xpybutil.event.connect('MapRequest', self.root, self.onMapRequest)
 
-    def setWMProps(self):
+    def setWMChildProps(self):
+        logger.debug(
+                "Setting up _NET_SUPPORTING_WM child window for EWMH compliance. (ID=%r, _NET_WM_PID=%r, "
+                "_NET_WM_NAME=%r, _NET_SUPPORTING_WM_CHECK=%r)",
+                self.ewmhChildWindow, pid, 'FTTPWM', self.ewmhChildWindow
+                )
+
+        def acquireWMScreenSelection(event):
+            # Acquire WM_Sn selection. (ICCCM window manager requirement) According to ICCCM, you should _not_ use
+            # CurrentTime here, but instead the 'time' field of a recent event, so that's what we're doing.
+            xpybutil.conn.core.SetSelectionOwner(self.ewmhChildWindow, atom('WM_S{}'.format(self.screenNumber)),
+                    event.time)
+            xpybutil.event.disconnect('PropertyChange', self.ewmhChildWindow)
+            xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
+
+        xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
+        xpybutil.event.connect('PropertyChange', self.ewmhChildWindow, acquireWMScreenSelection)
+        xpybutil.event.connect('SelectionRequest', self.ewmhChildWindow, self.onSelectionRequest)
+
+        ewmh.set_wm_name(self.ewmhChildWindow, 'FTTPWM')
+        ewmh.set_supporting_wm_check(self.ewmhChildWindow, self.ewmhChildWindow)
+
+        try:
+            ewmh.set_wm_pid(self.ewmhChildWindow, self.pid)
+        except OverflowError:
+            #XXX: HACK to work around broken code in xpybutil.ewmh:
+            packed = struct.pack('I', pid)
+            xpybutil.conn.core.ChangeProperty(PropMode.Replace, self.ewmhChildWindow, atom('_NET_WM_PID'),
+                    Atom.CARDINAL, 32, 1, packed)
+            #/HACK
+
+    def setRootProps(self):
         ewmh.set_supporting_wm_check(self.root, self.ewmhChildWindow)
         ewmh.set_supported([
                 # Root Window Properties (and Related Messages)
@@ -297,8 +316,8 @@ class WM(object):
 
         #TODO: Move into Frame.
         xpybutil.window.listen(window, 'EnterWindow')  # 'FocusChange', 'PropertyChange', 'StructureNotify')
-        event.connect('EnterNotify', window, self.onEnterNotify)
-        event.connect('UnmapNotify', window, self.onUnmapNotify)
+        xpybutil.event.connect('EnterNotify', window, self.onEnterNotify)
+        xpybutil.event.connect('UnmapNotify', window, self.onUnmapNotify)
 
         ewmh.set_frame_extents(window, 0, 0, 0, 0)
         #ewmh.set_frame_extents(window, left, right, top, bottom)
@@ -339,8 +358,8 @@ class WM(object):
 
         #TODO: Move into Frame.
         # Stop handling events from this window.
-        event.disconnect('EnterNotify', window)
-        event.disconnect('UnmapNotify', window)
+        xpybutil.event.disconnect('EnterNotify', window)
+        xpybutil.event.disconnect('UnmapNotify', window)
         # [end Move into Frame]
 
         self.windows.remove(window)
@@ -373,6 +392,13 @@ class WM(object):
     #    if util.get_atom_name(event.atom) == '_NET_ACTIVE_WINDOW':
     #        # Do something whenever the active window changes
     #        activeWindowID = ewmh.get_active_window().reply()
+
+    def onSelectionRequest(self, event):
+        logger.debug("onSelectionRequest:\n  %s", '\n  '.join(map(repr, event.__dict__.items())))
+        mask = EventMask.NoEvent
+        replyEvent = SelectionNotifyEvent.build()
+        xpybutil.event.send_event(event.requestor, mask, replyEvent)
+        event.SendEvent(false, event.requestor, EventMask.NoEvent, replyEvent)
 
     def onMapRequest(self, event):
         logger.debug("onMapRequest: %r", event.window)
@@ -428,13 +454,14 @@ class WM(object):
     def run(self):
         logger.info("Starting main event loop.")
 
-        #event.main()
+        #xpybutil.event.main()
         #XXX: HACK to work around the fact that xpybutil.event will never send us MapNotify, even if we've subscribed
-        # to SubstructureRedirect. And yes, this is a direct copy of event.main with some minor changes.
+        # to SubstructureRedirect, and will never send us SelectionRequest when we own a selection. And yes, this is a
+        # direct copy of xpybutil.event.main with some minor changes.
         try:
             while True:
-                event.read(block=True)
-                for e in event.queue():
+                xpybutil.event.read(block=True)
+                for e in xpybutil.event.queue():
                     w = None
                     if isinstance(e, MappingNotifyEvent):
                         w = None
@@ -444,11 +471,13 @@ class WM(object):
                         w = e.window
                     elif hasattr(e, 'event'):
                         w = e.event
+                    elif hasattr(e, 'owner'):
+                        w = e.owner
                     elif hasattr(e, 'requestor'):
                         w = e.requestor
 
                     key = (e.__class__, w)
-                    for cb in getattr(event, '__callbacks').get(key, []):
+                    for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
                         try:
                             cb(e)
                         except Exception:

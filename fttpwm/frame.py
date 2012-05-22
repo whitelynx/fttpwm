@@ -26,6 +26,7 @@ from .ewmh import EWMHAction, EWMHWindowState
 from .mouse import bindMouse, raiseAndMoveWindow
 from .settings import settings
 from .themes import Theme, State, Region
+from .themes import fonts as fonts
 from .themes.gradients import linearGradient, Direction
 from .utils import convertAttributes
 
@@ -63,6 +64,14 @@ settings.setDefaults(
                     ),
                 ),
             )
+        )
+
+# Default font options
+fonts.options.set(
+        antialias=fonts.antialias.default,
+        hintMetrics=fonts.hintMetrics.on,
+        hintStyle=fonts.hintStyle.slight,
+        subpixelOrder=fonts.subpixelOrder.default,
         )
 
 
@@ -137,9 +146,6 @@ class WindowFrame(object):
         # Set up Cairo.
         self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, wm.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
-
-        self.fontOptions = cairo.FontOptions()
-        self.fontOptions.set_hint_metrics(cairo.HINT_METRICS_ON)
 
         self.subscribeToEvents()
         self.activateBindings()
@@ -252,7 +258,7 @@ class WindowFrame(object):
 
         self.context.set_source_rgb(*self.theme.titlebar.text)
         self.context.select_font_face(*self.theme.titlebar.font)
-        self.context.set_font_options(self.fontOptions)
+        self.context.set_font_options(fonts.options.fontOptions)
 
         userFontEmSize, _ = self.context.device_to_user_distance(self.theme.titlebar.font_size, 0)
         self.context.set_font_size(userFontEmSize)

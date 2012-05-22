@@ -168,7 +168,7 @@ class WM(object):
             ewmh.set_wm_pid(self.ewmhChildWindow, self.pid)
         except OverflowError:
             #XXX: HACK to work around broken code in xpybutil.ewmh:
-            packed = struct.pack('I', pid)
+            packed = struct.pack('I', self.pid)
             xpybutil.conn.core.ChangeProperty(PropMode.Replace, self.ewmhChildWindow, atom('_NET_WM_PID'),
                     Atom.CARDINAL, 32, 1, packed)
             #/HACK

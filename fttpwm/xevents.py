@@ -16,7 +16,7 @@ class _EvFact(struct.Struct):
         self.event_id = _event_ids[name]
 
         # Add the 'event_id' field, which is common to all events.
-        fmt = 'B' + fmt
+        fmt = '=B' + fmt
         fieldNames = 'event_id, ' + fieldNames
 
         self.ResultType = collections.namedtuple(name, fieldNames)

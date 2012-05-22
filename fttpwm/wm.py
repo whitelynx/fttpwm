@@ -20,9 +20,11 @@ import xpybutil.ewmh as ewmh
 from xpybutil.util import get_atom as atom
 import xpybutil.window
 
+from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
 from .utils import convertAttributes
 from .xevents import SelectionNotifyEvent
+from .frame import WindowFrame
 
 
 logger = logging.getLogger("fttpwm.wm")
@@ -47,45 +49,6 @@ settings.setDefaults(
             ],
         initialDesktop=0,
         )
-
-
-class EWMHAction(object):
-    Move = atom('_NET_WM_ACTION_MOVE')
-    Resize = atom('_NET_WM_ACTION_RESIZE')
-    Minimize = atom('_NET_WM_ACTION_MINIMIZE')
-    Shade = atom('_NET_WM_ACTION_SHADE')
-    Stick = atom('_NET_WM_ACTION_STICK')
-    MaximizeHorz = atom('_NET_WM_ACTION_MAXIMIZE_HORZ')
-    MaximizeVert = atom('_NET_WM_ACTION_MAXIMIZE_VERT')
-    Fullscreen = atom('_NET_WM_ACTION_FULLSCREEN')
-    ChangeDesktop = atom('_NET_WM_ACTION_CHANGE_DESKTOP')
-    Close = atom('_NET_WM_ACTION_CLOSE')
-
-
-class EWMHWindowState(object):
-    Modal = atom('_NET_WM_STATE_MODAL')
-    Sticky = atom('_NET_WM_STATE_STICKY')
-    MaximizedVert = atom('_NET_WM_STATE_MAXIMIZED_VERT')
-    MaximizedHorz = atom('_NET_WM_STATE_MAXIMIZED_HORZ')
-    Shaded = atom('_NET_WM_STATE_SHADED')
-    SkipTaskbar = atom('_NET_WM_STATE_SKIP_TASKBAR')
-    SkipPager = atom('_NET_WM_STATE_SKIP_PAGER')
-    Hidden = atom('_NET_WM_STATE_HIDDEN')
-    Fullscreen = atom('_NET_WM_STATE_FULLSCREEN')
-    Above = atom('_NET_WM_STATE_ABOVE')
-    Below = atom('_NET_WM_STATE_BELOW')
-    DemandsAttention = atom('_NET_WM_STATE_DEMANDS_ATTENTION')
-
-
-class EWMHWindowType(object):
-    Desktop = atom('_NET_WM_WINDOW_TYPE_DESKTOP')
-    Dock = atom('_NET_WM_WINDOW_TYPE_DOCK')
-    Toolbar = atom('_NET_WM_WINDOW_TYPE_TOOLBAR')
-    Menu = atom('_NET_WM_WINDOW_TYPE_MENU')
-    Utility = atom('_NET_WM_WINDOW_TYPE_UTILITY')
-    Splash = atom('_NET_WM_WINDOW_TYPE_SPLASH')
-    Dialog = atom('_NET_WM_WINDOW_TYPE_DIALOG')
-    Normal = atom('_NET_WM_WINDOW_TYPE_NORMAL')
 
 
 class Color(object):
@@ -115,7 +78,7 @@ class WM(object):
         self.focusedBorderColor = self.allocColor(Color.float(.25, .5, 0))
         self.unfocusedBorderColor = self.allocColor(Color.float(.25, .25, .25))
 
-        self.windows = list()
+        self.windows = dict()
         self.focusedWindow = None
 
         self.checkForOtherWMs()
@@ -183,7 +146,7 @@ class WM(object):
         logger.debug(
                 "Setting up _NET_SUPPORTING_WM child window for EWMH compliance. (ID=%r, _NET_WM_PID=%r, "
                 "_NET_WM_NAME=%r, _NET_SUPPORTING_WM_CHECK=%r)",
-                self.ewmhChildWindow, pid, 'FTTPWM', self.ewmhChildWindow
+                self.ewmhChildWindow, self.pid, 'FTTPWM', self.ewmhChildWindow
                 )
 
         def acquireWMScreenSelection(event):
@@ -191,11 +154,11 @@ class WM(object):
             # CurrentTime here, but instead the 'time' field of a recent event, so that's what we're doing.
             xpybutil.conn.core.SetSelectionOwner(self.ewmhChildWindow, atom('WM_S{}'.format(self.screenNumber)),
                     event.time)
-            xpybutil.event.disconnect('PropertyChange', self.ewmhChildWindow)
-            xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
+            xpybutil.event.disconnect('PropertyNotify', self.ewmhChildWindow)
+            xpybutil.window.listen(self.ewmhChildWindow)
 
         xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
-        xpybutil.event.connect('PropertyChange', self.ewmhChildWindow, acquireWMScreenSelection)
+        xpybutil.event.connect('PropertyNotify', self.ewmhChildWindow, acquireWMScreenSelection)
         xpybutil.event.connect('SelectionRequest', self.ewmhChildWindow, self.onSelectionRequest)
 
         ewmh.set_wm_name(self.ewmhChildWindow, 'FTTPWM')
@@ -308,90 +271,69 @@ class WM(object):
         else:
             return windowID
 
-    def manageWindow(self, window):
-        logger.debug("Managing window %r...", window)
+    def manageWindow(self, clientWindow):
+        if clientWindow in self.windows:
+            logger.warn("manageWindow: Window %r is already in our list of clients! Ignoring call.", clientWindow)
+            return
+
+        logger.debug("Managing window %r...", clientWindow)
 
         cookies = []
-        cookies.append(xpybutil.conn.core.ChangeSaveSetChecked(SetMode.Insert, window))
-
-        #TODO: Move into Frame.
-        xpybutil.window.listen(window, 'EnterWindow')  # 'FocusChange', 'PropertyChange', 'StructureNotify')
-        xpybutil.event.connect('EnterNotify', window, self.onEnterNotify)
-        xpybutil.event.connect('UnmapNotify', window, self.onUnmapNotify)
-
-        ewmh.set_frame_extents(window, 0, 0, 0, 0)
-        #ewmh.set_frame_extents(window, left, right, top, bottom)
-        #ewmh.set_wm_window_opacity(frame, opacity)
-        #title = ewmh.get_wm_name(window).reply() or icccm.get_wm_name(window).reply()
-        ewmh.set_wm_state(window, [EWMHWindowState.MaximizedVert])
-        ewmh.set_wm_allowed_actions(window, [
-                EWMHAction.Move,
-                EWMHAction.Resize,
-                #EWMHAction.Minimize,
-                #EWMHAction.Shade,
-                #EWMHAction.Stick,
-                #EWMHAction.MaximizeHorz,
-                #EWMHAction.MaximizeVert,
-                #EWMHAction.Fullscreen,
-                #EWMHAction.ChangeDesktop,
-                EWMHAction.Close,
-                ])
-        #if atom('_NET_WM_PING') in icccm.get_wm_protocols(window).reply():
-        #    self.startPing()
-        # [end Move into Frame]
+        cookies.append(xpybutil.conn.core.ChangeSaveSetChecked(SetMode.Insert, clientWindow))
 
         #FIXME: We should pay attention to the _NET_WM_DESKTOP value if initially set by the client, and try to put the
         # window on that desktop. If it is not set, or the specified desktop doesn't exist, then we should set it.
-        #ewmh.get_wm_desktop(window)
-        ewmh.set_wm_desktop(window, 0)
+        #ewmh.get_wm_desktop(clientWindow)
+        ewmh.set_wm_desktop(clientWindow, 0)
 
-        self.windows.append(window)
-        ewmh.set_client_list(self.windows)
-        self.rearrangeWindows()
+        frame = WindowFrame(self, clientWindow)
 
-    def unmanageWindow(self, window):
-        if window not in self.windows:
-            logger.warn("unmanageWindow: Window %r is not in our list of clients! Ignoring.", window)
+        self.windows[clientWindow] = frame
+        self.updateWindows()
+
+    def unmanageWindow(self, clientWindow):
+        if clientWindow not in self.windows:
+            logger.warn("unmanageWindow: Window %r is not in our list of clients! Ignoring call.", clientWindow)
             return
 
-        logger.debug("Unmanaging window %r...", window)
+        logger.debug("Unmanaging window %r...", clientWindow)
 
         #TODO: Move into Frame.
         # Stop handling events from this window.
-        xpybutil.event.disconnect('EnterNotify', window)
-        xpybutil.event.disconnect('UnmapNotify', window)
+        xpybutil.event.disconnect('EnterNotify', clientWindow)
+        xpybutil.event.disconnect('UnmapNotify', clientWindow)
         # [end Move into Frame]
 
-        self.windows.remove(window)
+        del self.windows[clientWindow]
+        self.updateWindows()
+
+    def updateWindows(self):
         ewmh.set_client_list(self.windows)
         self.rearrangeWindows()
 
     def rearrangeWindows(self):
-        if len(self.windows) == 0:
+        windowCount = len(self.windows)
+        if windowCount == 0:
             return
 
         x = 0
         y = 0
-        width = self.desktopWidth / len(self.windows)
+        width = self.desktopWidth / windowCount
         height = self.desktopHeight
 
-        for window in self.windows:
-            xpybutil.conn.core.ConfigureWindow(window, *convertAttributes({
+        for frame in self.windows.values():
+            #TODO: Move this into WindowFrame.
+            attributes = convertAttributes({
                     ConfigWindow.X: x,
                     ConfigWindow.Y: y,
                     ConfigWindow.Width: width,
                     ConfigWindow.Height: height,
-                    ConfigWindow.BorderWidth: 2 if window == self.focusedWindow else 0,
                     ConfigWindow.StackMode: StackMode.Above
-                    }))
+                    })
+            xpybutil.conn.core.ConfigureWindow(frame.frameWindowID, *attributes)
             x += width
 
         xpybutil.conn.flush()
-
-    #def onPropertyChange(event):
-    #    if util.get_atom_name(event.atom) == '_NET_ACTIVE_WINDOW':
-    #        # Do something whenever the active window changes
-    #        activeWindowID = ewmh.get_active_window().reply()
 
     def onSelectionRequest(self, event):
         logger.debug("onSelectionRequest:\n  %s", '\n  '.join(map(repr, event.__dict__.items())))
@@ -422,33 +364,25 @@ class WM(object):
 
     #TODO: Move into Frame.
     def onEnterNotify(self, event):
-        if event.event in self.windows:
+        if event.event in self.windows.values():
             self.focusWindow(event.event)
 
     def onUnmapNotify(self, event):
         self.unmanageWindow(event.window)
     # [end Move into Frame]
 
-    def focusWindow(self, window):
-        logger.debug("onEnterNotify: Focusing %r.", window)
+    def focusWindow(self, frame):
+        logger.debug("onEnterNotify: Focusing %r.", frame.clientWindow)
 
         if self.focusedWindow is not None:
-            xpybutil.conn.core.ConfigureWindow(self.focusedWindow, *convertAttributes({
-                    ConfigWindow.BorderWidth: 0,
-                    }))
-            xpybutil.conn.core.ChangeWindowAttributes(self.focusedWindow, *convertAttributes({
-                    CW.BorderPixel: self.unfocusedBorderColor
-                    }))
+            self.focusedWindow.onLostFocus()
 
-        self.focusedWindow = window
-        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, window, xcb.CurrentTime)
-        xpybutil.conn.core.ConfigureWindow(self.focusedWindow, *convertAttributes({
-                ConfigWindow.BorderWidth: 2,
-                }))
-        xpybutil.conn.core.ChangeWindowAttributes(self.focusedWindow, *convertAttributes({
-                CW.BorderPixel: self.focusedBorderColor
-                }))
-        ewmh.set_active_window(window)
+        self.focusedWindow = frame
+
+        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, frame, xcb.CurrentTime)
+        ewmh.set_active_window(frame.clientWindow)
+        frame.onGainedFocus()
+
         xpybutil.conn.flush()
 
     def run(self):

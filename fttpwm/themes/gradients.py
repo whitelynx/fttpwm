@@ -12,7 +12,7 @@ def addColorStop(gradient, position, color):
     if len(color) == 3:
         gradient.add_color_stop_rgb(position, *color)
 
-    elif len(color) == 3:
+    elif len(color) == 4:
         gradient.add_color_stop_rgba(position, *color)
 
 

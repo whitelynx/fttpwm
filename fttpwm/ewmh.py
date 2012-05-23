@@ -27,6 +27,7 @@ class EWMHWindowState(object):
     Above = atom('_NET_WM_STATE_ABOVE')
     Below = atom('_NET_WM_STATE_BELOW')
     DemandsAttention = atom('_NET_WM_STATE_DEMANDS_ATTENTION')
+    Focused = atom('_NET_WM_STATE_FOCUSED')
 
 
 class EWMHWindowType(object):

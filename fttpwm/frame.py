@@ -25,9 +25,7 @@ from .bind import FilteredHandler
 from .ewmh import EWMHAction, EWMHWindowState
 from .mouse import bindMouse, raiseAndMoveWindow
 from .settings import settings
-from .themes import Theme, State, Region
-from .themes import fonts as fonts
-from .themes.gradients import linearGradient, Direction
+from .themes import Theme, State, Region, DefaultTitlebar, fonts
 from .utils import convertAttributes
 
 
@@ -39,18 +37,7 @@ settings.setDefaults(
                 window=Region(
                     opacity=1,
                     ),
-                titlebar=Region(
-                    font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
-                    font_size=5,
-                    text=(0, 0, 0),
-                    background=linearGradient(Direction.vertical, {
-                        0: (1, 1, 0.75, 1),
-                        1. / 16: (1, 0.9, 0, 1),
-                        15. / 16: (1, 0.3, 0, 1),
-                        1: (0.5, 0, 0, 1),
-                        }),
-                    height=16,
-                    ),
+                titlebar=DefaultTitlebar(),
                 border=Region(
                     width=1,
                     ),
@@ -59,18 +46,7 @@ settings.setDefaults(
                 window=Region(
                     opacity=0.7,
                     ),
-                titlebar=Region(
-                    font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
-                    font_size=5,
-                    text=(0, 0, 0),
-                    background=linearGradient(Direction.vertical, {
-                        0: (1, 1, 0.5, 1),
-                        1. / 16: (0.8, 0.7, 0.3, 1),
-                        15. / 16: (0.8, 0.5, 0.3, 1),
-                        1: (0.5, 0, 0, 1),
-                        }),
-                    height=16,
-                    ),
+                titlebar=DefaultTitlebar(bgFrom=(0.8, 0.7, 0.3), bgTo=(0.8, 0.5, 0.3)),
                 border=Region(
                     width=1,
                     ),
@@ -342,27 +318,11 @@ class WindowFrame(object):
     def paint(self):
         self.context.set_operator(cairo.OPERATOR_OVER)
 
-        titlebarPattern = self.theme.titlebar.background
-        titlebarPattern.set_matrix(cairo.Matrix(
-                xx=1.0 / self.width,
-                yy=1.0 / self.theme.titlebar.height
+        self.context.set_matrix(cairo.Matrix(
+                xx=self.width,
+                yy=self.theme.titlebar.height
                 ))
-        self.context.set_source(titlebarPattern)
-        self.context.paint()
-
-        self.context.set_source_rgb(*self.theme.titlebar.text)
-        self.context.select_font_face(*self.theme.titlebar.font)
-        self.context.set_font_options(fonts.options.fontOptions)
-
-        userFontEmSize, _ = self.context.device_to_user_distance(self.theme.titlebar.font_size, 0)
-        self.context.set_font_size(userFontEmSize)
-
-        xBearing, yBearing, textWidth, textHeight = self.context.text_extents(self.title)[:4]
-        self.context.move_to(
-                0.5 * self.width - textWidth / 2 - xBearing,
-                0.5 * self.theme.titlebar.height - textHeight / 2 - yBearing
-                )
-        self.context.show_text(self.title)
+        self.theme.titlebar(self.context, self)
 
         self.surface.flush()
         xpybutil.conn.flush()

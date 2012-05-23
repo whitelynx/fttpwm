@@ -1,8 +1,8 @@
 from fttpwm.keyboard import bindKeys
 from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
 from fttpwm.utils import startApp, quit
-from fttpwm.themes import Theme, State, Region
-from fttpwm.themes.gradients import linearGradient, Direction
+from fttpwm.themes import Theme, State, Region, DefaultTitlebar
+from fttpwm.themes.gradients import Direction
 import fttpwm.themes.fonts as fonts
 
 
@@ -24,19 +24,7 @@ theme = Theme(
             window=Region(
                 opacity=1,
                 ),
-            titlebar=Region(
-                font=("drift", fonts.slant.normal, fonts.weight.normal),
-                font_size=5,
-                text=(0, 0, 0),
-                background=linearGradient(Direction.vertical, {
-                    0: (1, 1, 0.75, 1),
-                    1. / 16: (1, 0.9, 0, 1),
-                    15. / 16: (1, 0.3, 0, 1),
-                    1: (0.5, 0, 0, 1),
-                    }),
-                height=16,
-                opacity=1,
-                ),
+            titlebar=DefaultTitlebar(),
             border=Region(
                 width=1,
                 ),
@@ -45,19 +33,7 @@ theme = Theme(
             window=Region(
                 opacity=0.7,
                 ),
-            titlebar=Region(
-                font=("drift", fonts.slant.normal, fonts.weight.normal),
-                font_size=5,
-                text=(0, 0, 0),
-                background=linearGradient(Direction.vertical, {
-                    0: (1, 1, 0.5, 1),
-                    1. / 16: (0.8, 0.7, 0.3, 1),
-                    15. / 16: (0.8, 0.5, 0.3, 1),
-                    1: (0.5, 0, 0, 1),
-                    }),
-                height=16,
-                opacity=0.7,
-                ),
+            titlebar=DefaultTitlebar(bgFrom=(0.8, 0.7, 0.3), bgTo=(0.8, 0.5, 0.3)),
             border=Region(
                 width=1,
                 ),

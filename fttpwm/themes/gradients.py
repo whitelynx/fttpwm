@@ -1,4 +1,9 @@
+import logging
+
 import cairo
+
+
+logger = logging.getLogger("fttpwm.themes.gradients")
 
 
 class Direction(object):
@@ -14,6 +19,9 @@ def addColorStop(gradient, position, color):
 
     elif len(color) == 4:
         gradient.add_color_stop_rgba(position, *color)
+
+    else:
+        logger.error("Invalid color: %r", color)
 
 
 def linearGradient(orientation, *colors):

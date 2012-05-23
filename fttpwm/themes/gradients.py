@@ -2,10 +2,10 @@ import cairo
 
 
 class Direction(object):
-    Vertical = 0, 0, 0, 1
-    Horizontal = 0, 0, 1, 0
-    DiagonalUpLeft = 0, 0, 1, 1
-    DiagonalUpRight = 0, 1, 1, 0
+    vertical = 0, 0, 0, 1
+    horizontal = 0, 0, 1, 0
+    diagonalUpLeft = 0, 0, 1, 1
+    diagonalUpRight = 0, 1, 1, 0
 
 
 def addColorStop(gradient, position, color):

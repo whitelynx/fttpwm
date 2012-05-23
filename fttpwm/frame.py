@@ -43,7 +43,12 @@ settings.setDefaults(
                     font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
                     font_size=5,
                     text=(0, 0, 0),
-                    background=linearGradient(Direction.Vertical, (1, 0.9, 0, 1), (1, 0.3, 0, 1)),
+                    background=linearGradient(Direction.vertical, {
+                        0: (1, 1, 0.75, 1),
+                        1. / 16: (1, 0.9, 0, 1),
+                        15. / 16: (1, 0.3, 0, 1),
+                        1: (0.5, 0, 0, 1),
+                        }),
                     height=16,
                     ),
                 border=Region(
@@ -58,7 +63,12 @@ settings.setDefaults(
                     font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
                     font_size=5,
                     text=(0, 0, 0),
-                    background=linearGradient(Direction.Vertical, (1, 0.7, 0.3, 0.8), (1, 0.5, 0.3, 0.8)),
+                    background=linearGradient(Direction.vertical, {
+                        0: (1, 1, 0.5, 1),
+                        1. / 16: (0.8, 0.7, 0.3, 1),
+                        15. / 16: (0.8, 0.5, 0.3, 1),
+                        1: (0.5, 0, 0, 1),
+                        }),
                     height=16,
                     ),
                 border=Region(
@@ -225,7 +235,7 @@ class WindowFrame(object):
     def onConfigureNotify(self, event):
         if (self.width, self.height) != (event.width, event.height):
             # Window size changed; resize surface and redraw.
-            self.logger.debug("Window size changed to {}.".format((event.width, event.height)))
+            self.logger.debug("onConfigureNotify: Window size changed to %r.", (event.width, event.height))
             self.surface.set_size(event.width, event.height)
             self.width, self.height = event.width, event.height
             attributes = convertAttributes({
@@ -298,11 +308,6 @@ class WindowFrame(object):
         self.addWMState(EWMHWindowState.Focused)
 
         if self.frameWindowID is not None:
-            #XXX: HACK until I figure out why cairo drawing isn't working for the background any more
-            xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
-                    CW.BackPixel: self.wm.focusedBorderColor,
-                    })).check()
-
             self.applyTheme()
 
     def onLostFocus(self):
@@ -311,11 +316,6 @@ class WindowFrame(object):
         self.removeWMState(EWMHWindowState.Focused)
 
         if self.frameWindowID is not None:
-            #XXX: HACK until I figure out why cairo drawing isn't working for the background any more
-            xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
-                    CW.BackPixel: self.wm.unfocusedBorderColor,
-                    })).check()
-
             self.applyTheme()
 
     ## Properties ####

@@ -21,6 +21,9 @@ bindMouse({
 
 theme = Theme(
         focused=State(
+            window=Region(
+                opacity=1,
+                ),
             titlebar=Region(
                 font=("drift", fonts.slant.normal, fonts.weight.normal),
                 font_size=5,
@@ -34,6 +37,9 @@ theme = Theme(
                 ),
             ),
         unfocused=State(
+            window=Region(
+                opacity=0.7,
+                ),
             titlebar=Region(
                 font=("drift", fonts.slant.normal, fonts.weight.normal),
                 font_size=5,

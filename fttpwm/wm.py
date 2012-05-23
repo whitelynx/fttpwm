@@ -79,6 +79,7 @@ class WM(object):
         self.unfocusedBorderColor = self.allocColor(Color.float(.25, .25, .25))
 
         self.windows = dict()
+        self.visibleWindows = dict()
         self.focusedWindow = None
 
         self.checkForOtherWMs()
@@ -132,15 +133,14 @@ class WM(object):
 
         logger.debug("startManaging: Subscribing to events.")
 
-        xpybutil.window.listen(xpybutil.root, 'EnterWindow', 'LeaveWindow', 'PropertyChange',
-                'SubstructureRedirect', 'SubstructureNotify', 'StructureNotify')
-                # It might make sense to do this, but if we update our frames when we set the focus, it'll be faster.
-                #'EventMask.FocusChange')
+        xpybutil.event.connect('MapRequest', self.root, self.onMapRequest)
 
         logger.debug("startManaging: Reticulating splines.")
 
-        xpybutil.event.connect('EnterNotify', self.root, self.onEnterNotify)
-        xpybutil.event.connect('MapRequest', self.root, self.onMapRequest)
+        xpybutil.window.listen(xpybutil.root, 'PropertyChange',
+                'SubstructureRedirect', 'SubstructureNotify', 'StructureNotify')
+                # It might make sense to do this, but if we update our frames when we set the focus, it'll be faster.
+                #'EventMask.FocusChange')
 
     def setWMChildProps(self):
         logger.debug(
@@ -152,14 +152,26 @@ class WM(object):
         def acquireWMScreenSelection(event):
             # Acquire WM_Sn selection. (ICCCM window manager requirement) According to ICCCM, you should _not_ use
             # CurrentTime here, but instead the 'time' field of a recent event, so that's what we're doing.
-            xpybutil.conn.core.SetSelectionOwner(self.ewmhChildWindow, atom('WM_S{}'.format(self.screenNumber)),
-                    event.time)
-            xpybutil.event.disconnect('PropertyNotify', self.ewmhChildWindow)
-            xpybutil.window.listen(self.ewmhChildWindow)
+            xpybutil.conn.core.SetSelectionOwner(
+                    self.ewmhChildWindow,
+                    atom('WM_S{}'.format(self.screenNumber)),
+                    event.time
+                    )
 
-        xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
+            try:
+                xpybutil.window.listen(self.ewmhChildWindow)
+            except:
+                self.logger.exception("Error while clearing listened events on _NET_SUPPORTING_WM child window %r!",
+                        self.ewmhChildWindow)
+
+            xpybutil.event.disconnect('PropertyNotify', self.ewmhChildWindow)
+            # Leave SelectionRequest connected, since we will continue to receive it even after clearing the listened
+            # events, and since we need to continue to respond with the correct message when asked.
+
         xpybutil.event.connect('PropertyNotify', self.ewmhChildWindow, acquireWMScreenSelection)
         xpybutil.event.connect('SelectionRequest', self.ewmhChildWindow, self.onSelectionRequest)
+
+        xpybutil.window.listen(self.ewmhChildWindow, 'PropertyChange')
 
         ewmh.set_wm_name(self.ewmhChildWindow, 'FTTPWM')
         ewmh.set_supporting_wm_check(self.ewmhChildWindow, self.ewmhChildWindow)
@@ -230,7 +242,7 @@ class WM(object):
 
     def createWindow(self, x, y, width, height, attributes={}, windowID=None, parentID=None, borderWidth=0,
             windowClass=WindowClass.InputOutput, checked=False):
-        """A convenience method to create new windows.
+        """A convenience method to create a new window.
 
         The major advantage of this is the ability to use a dictionary to specify window attributes; this eliminates
         the need to figure out what order to specify values in according to the numeric values of the 'CW' or
@@ -271,9 +283,10 @@ class WM(object):
         else:
             return windowID
 
+    ## Individual client management ####
     def manageWindow(self, clientWindow):
         if clientWindow in self.windows:
-            logger.warn("manageWindow: Window %r is already in our list of clients! Ignoring call.", clientWindow)
+            logger.debug("manageWindow: Window %r is already in our list of clients; ignoring call.", clientWindow)
             return
 
         logger.debug("Managing window %r...", clientWindow)
@@ -287,32 +300,65 @@ class WM(object):
         ewmh.set_wm_desktop(clientWindow, 0)
 
         frame = WindowFrame(self, clientWindow)
+        logger.debug("Created new frame: %r", frame)
 
         self.windows[clientWindow] = frame
         self.updateWindows()
 
-    def unmanageWindow(self, clientWindow):
-        if clientWindow not in self.windows:
-            logger.warn("unmanageWindow: Window %r is not in our list of clients! Ignoring call.", clientWindow)
+    def unmanageWindow(self, frame):
+        if frame.clientWindowID not in self.windows:
+            logger.warn("unmanageWindow: client window of %r is not a recognized client! Ignoring call.", frame)
             return
 
-        logger.debug("Unmanaging window %r...", clientWindow)
+        logger.debug("Unmanaging client window of %r...", frame)
 
-        #TODO: Move into Frame.
-        # Stop handling events from this window.
-        xpybutil.event.disconnect('EnterNotify', clientWindow)
-        xpybutil.event.disconnect('UnmapNotify', clientWindow)
-        # [end Move into Frame]
-
-        del self.windows[clientWindow]
+        del self.windows[frame.clientWindowID]
+        self.visibleWindows.pop(frame.clientWindowID, None)
         self.updateWindows()
 
+    def notifyVisible(self, frame):
+        logger.debug("notifyVisible: %r is now visible.", frame)
+        self.visibleWindows[frame.clientWindowID] = frame
+        self.updateWindows()
+
+    def hideFrame(self, frame):
+        logger.debug("hideFrame: Hiding %r.", frame)
+        try:
+            xpybutil.conn.core.UnmapWindowChecked(frame.frameWindowID).check()
+        except:
+            logger.exception("hideFrame: Error unmapping %r!", frame)
+            return
+
+        self.visibleWindows.pop(frame.clientWindowID, None)
+
+    def focusWindow(self, frame):
+        logger.debug("focusWindow: Focusing %r.", frame)
+
+        if self.focusedWindow is not None:
+            try:
+                self.focusedWindow.onLostFocus()
+            except:
+                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.focusedWindow)
+
+        self.focusedWindow = frame
+
+        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, frame.clientWindowID, xcb.CurrentTime)
+        ewmh.set_active_window(frame.clientWindowID)
+
+        try:
+            frame.onGainedFocus()
+        except:
+            logger.exception("focusWindow: Error calling onGainedFocus on %r.", self.focusedWindow)
+
+        xpybutil.conn.flush()
+
+    ## Window layout ####
     def updateWindows(self):
         ewmh.set_client_list(self.windows)
         self.rearrangeWindows()
 
     def rearrangeWindows(self):
-        windowCount = len(self.windows)
+        windowCount = len(self.visibleWindows)
         if windowCount == 0:
             return
 
@@ -321,7 +367,7 @@ class WM(object):
         width = self.desktopWidth / windowCount
         height = self.desktopHeight
 
-        for frame in self.windows.values():
+        for frame in self.visibleWindows.values():
             #TODO: Move this into WindowFrame.
             attributes = convertAttributes({
                     ConfigWindow.X: x,
@@ -335,56 +381,36 @@ class WM(object):
 
         xpybutil.conn.flush()
 
+    ## Event handlers ####
     def onSelectionRequest(self, event):
-        logger.debug("onSelectionRequest:\n  %s", '\n  '.join(map(repr, event.__dict__.items())))
+        logger.debug("onSelectionRequest:\n  %s", "\n  ".join(map(repr, event.__dict__.items())))
         mask = EventMask.NoEvent
         replyEvent = SelectionNotifyEvent.build()
         xpybutil.event.send_event(event.requestor, mask, replyEvent)
         event.SendEvent(false, event.requestor, EventMask.NoEvent, replyEvent)
 
     def onMapRequest(self, event):
-        logger.debug("onMapRequest: %r", event.window)
+        clientWindow = event.window
+        logger.debug("onMapRequest: %r", clientWindow)
 
-        #TODO: Needed?
+        #TODO: Needed? (if override_redirect is set, we shouldn't ever receive this event!)
         #try:
-        #    attribs = xpybutil.conn.GetWindowAttributes(event.window).reply()
+        #    attribs = xpybutil.conn.GetWindowAttributes(clientWindow).reply()
         #except:
-        #    logger.exception("onMapRequest: Error getting window attributes for window %r!", event.window)
+        #    logger.exception("onMapRequest: Error getting window attributes for window %r!", clientWindow)
         #    return
         #if attribs.override_redirect:
         #    return
 
-        self.manageWindow(event.window)
+        self.manageWindow(clientWindow)
 
         try:
-            xpybutil.conn.core.MapWindowChecked(event.window).check()
+            xpybutil.conn.core.MapWindowChecked(clientWindow).check()
         except:
-            logger.exception("onMapRequest: Error mapping window %r!", event.window)
+            logger.exception("onMapRequest: Error mapping window %r! Not adding to visible window list.", clientWindow)
             return
 
-    #TODO: Move into Frame.
-    def onEnterNotify(self, event):
-        if event.event in self.windows.values():
-            self.focusWindow(event.event)
-
-    def onUnmapNotify(self, event):
-        self.unmanageWindow(event.window)
-    # [end Move into Frame]
-
-    def focusWindow(self, frame):
-        logger.debug("onEnterNotify: Focusing %r.", frame.clientWindow)
-
-        if self.focusedWindow is not None:
-            self.focusedWindow.onLostFocus()
-
-        self.focusedWindow = frame
-
-        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, frame, xcb.CurrentTime)
-        ewmh.set_active_window(frame.clientWindow)
-        frame.onGainedFocus()
-
-        xpybutil.conn.flush()
-
+    ## Main event loop ####
     def run(self):
         logger.info("Starting main event loop.")
 
@@ -419,8 +445,8 @@ class WM(object):
                                     cb, e.__class__, w)
 
         except xcb.Exception:
-            logger.exception("Error in main event loop!")
+            logger.exception("Error in main event loop! Exiting with error status.")
             sys.exit(1)
         #/HACK
 
-        logger.info("Event loop terminated; shutting down.")
+        logger.info("Event loop terminated; shutting down normally.")

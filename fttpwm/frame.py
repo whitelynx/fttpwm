@@ -31,33 +31,35 @@ from .themes.gradients import linearGradient, Direction
 from .utils import convertAttributes
 
 
-logger = logging.getLogger("test-cairo")
-
 UINT32_MAX = 2 ** 32
 
 settings.setDefaults(
         theme=Theme(
             focused=State(
+                window=Region(
+                    opacity=1,
+                    ),
                 titlebar=Region(
                     font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
                     font_size=5,
                     text=(0, 0, 0),
                     background=linearGradient(Direction.Vertical, (1, 0.9, 0, 1), (1, 0.3, 0, 1)),
                     height=16,
-                    opacity=1,
                     ),
                 border=Region(
                     width=1,
                     ),
                 ),
             unfocused=State(
+                window=Region(
+                    opacity=0.7,
+                    ),
                 titlebar=Region(
                     font=("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL),
                     font_size=5,
                     text=(0, 0, 0),
                     background=linearGradient(Direction.Vertical, (1, 0.7, 0.3, 0.8), (1, 0.5, 0.3, 0.8)),
                     height=16,
-                    opacity=0.7,
                     ),
                 border=Region(
                     width=1,
@@ -97,10 +99,15 @@ class WindowFrame(object):
         cookies.icccmTitle = icccm.get_wm_name(clientWindowID)
         xpybutil.conn.flush()
 
-        self.logger = logging.getLogger("fttpwm.frame.WindowFrame.{}".format(self.frameWindowID))
+        self.logger = logging.getLogger(
+                "fttpwm.frame.WindowFrame.{}(client:{})".format(
+                    self.frameWindowID,
+                    self.clientWindowID
+                    ))
 
         #TODO: Keep these updated where appropriate!
-        ewmh.set_wm_state(clientWindowID, [EWMHWindowState.MaximizedVert])
+        self.wm_states = [EWMHWindowState.MaximizedVert]
+        ewmh.set_wm_state(clientWindowID, self.wm_states)
         ewmh.set_wm_allowed_actions(clientWindowID, [
                 EWMHAction.Move,
                 EWMHAction.Resize,
@@ -115,7 +122,7 @@ class WindowFrame(object):
                 ])
 
         #TODO: Implement _NET_WM_PING!
-        #if atom('_NET_WM_PING') in icccm.get_wm_protocols(clientWindow).reply():
+        #if atom('_NET_WM_PING') in icccm.get_wm_protocols(clientWindowID).reply():
         #    self.startPing()
 
         leftFrame = rightFrame = bottomFrame = self.theme.border.width
@@ -161,15 +168,52 @@ class WindowFrame(object):
             except:
                 self.logger.exception("Error while checking results of %s query!", name)
 
+    def __repr__(self):
+        return "<Frame {} for client {}>".format(self.frameWindowID, self.clientWindowID)
+
     def subscribeToEvents(self):
-        xpybutil.window.listen(self.frameWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
-                'StructureNotify', 'SubstructureNotify')
+        self.logger.info("Subscribing to events.")
+
+        # Frame window events
         xpybutil.event.connect('ConfigureNotify', self.frameWindowID, self.onConfigureNotify)
         xpybutil.event.connect('EnterNotify', self.frameWindowID, self.onEnterNotify)
         xpybutil.event.connect('Expose', self.frameWindowID, self.onExpose)
         xpybutil.event.connect('MapNotify', self.frameWindowID, self.onMapNotify)
-        xpybutil.event.connect('UnmapNotify', self.frameWindowID, self.onUnmapNotify)
-        xpybutil.event.connect('DestroyNotify', self.frameWindowID, self.onDestroyNotify)
+
+        xpybutil.window.listen(self.frameWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
+                'StructureNotify', 'SubstructureNotify')
+
+        # Client window events
+        xpybutil.event.connect('UnmapNotify', self.clientWindowID, self.onClientUnmapNotify)
+        xpybutil.event.connect('DestroyNotify', self.clientWindowID, self.onClientDestroyNotify)
+
+        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
+                'StructureNotify', 'SubstructureNotify')
+
+    def unsubscribeFromEvents(self):
+        self.logger.info("Unsubscribing from events.")
+
+        # Client window events
+        if self.clientWindowID is not None:
+            try:
+                xpybutil.window.listen(self.clientWindowID)
+            except:
+                self.logger.exception("Error while clearing listened events on client window %r!", self.clientWindowID)
+
+            xpybutil.event.disconnect('UnmapNotify', self.clientWindowID)
+            xpybutil.event.disconnect('DestroyNotify', self.clientWindowID)
+
+        # Frame window events
+        if self.frameWindowID is not None:
+            try:
+                xpybutil.window.listen(self.frameWindowID)
+            except:
+                self.logger.exception("Error while clearing listened events on frame window %r!", self.frameWindowID)
+
+            xpybutil.event.disconnect('ConfigureNotify', self.frameWindowID)
+            xpybutil.event.disconnect('EnterNotify', self.frameWindowID)
+            xpybutil.event.disconnect('Expose', self.frameWindowID)
+            xpybutil.event.disconnect('MapNotify', self.frameWindowID)
 
     def activateBindings(self):
         xcb.xproto.ButtonMask._1
@@ -177,6 +221,7 @@ class WindowFrame(object):
                 '1': raiseAndMoveWindow,
                 })
 
+    ## X events ####
     def onConfigureNotify(self, event):
         if (self.width, self.height) != (event.width, event.height):
             # Window size changed; resize surface and redraw.
@@ -191,45 +236,89 @@ class WindowFrame(object):
             self.paint()
 
     def onEnterNotify(self, event):
-        pass
+        self.logger.debug("onEnterNotify: %r", event.__dict__)
+        if not self.focused:
+            self.wm.focusWindow(self)
 
     def onExpose(self, event):
         self.paint()
 
     def onMapNotify(self, event):
+        self.wm.notifyVisible(self)
         self.paint()
 
-    def onUnmapNotify(self, event):
-        pass
+    def onClientUnmapNotify(self, event):
+        self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
 
-    def onDestroyNotify(self, event):
-        pass
+        if self.frameWindowID is None:
+            self.logger.warn("onClientUnmapNotify: No frame window to hide! PANIC!")
+            return
 
+        try:
+            self.wm.hideFrame(self)
+        except:
+            self.logger.exception("Error hiding frame window!")
+
+    def onClientDestroyNotify(self, event):
+        self.logger.debug("onClientDestroyNotify: %r", event.__dict__)
+
+        if self.clientWindowID is not None:
+            try:
+                self.wm.unmanageWindow(self)
+            except:
+                self.logger.exception("onClientDestroyNotify: Error unmanaging client window %r!", self.clientWindowID)
+
+            self.clientWindowID = None
+
+        self.unsubscribeFromEvents()
+
+        if self.frameWindowID is not None:
+            #TODO: Do we want to clear and save unused frames in a pool so we don't need to destroy and re-create them?
+            try:
+                xpybutil.conn.core.DestroyWindowChecked(self.frameWindowID).check()
+            except:
+                self.logger.exception("onClientDestroyNotify: Error destroying frame window %r!", self.frameWindowID)
+
+            self.frameWindowID = None
+
+    def addWMState(self, state):
+        self.wm_states.append(state)
+        if self.clientWindowID is not None:
+            ewmh.set_wm_state(self.clientWindowID, self.wm_states)
+
+    def removeWMState(self, state):
+        self.wm_states.remove(state)
+        if self.clientWindowID is not None:
+            ewmh.set_wm_state(self.clientWindowID, self.wm_states)
+
+    ## WM events ####
     def onGainedFocus(self):
+        self.logger.debug("onGainedFocus")
         self.focused = True
-        self.wm_states.append(atom('_NET_WM_STATE_FOCUSED'))
-        ewmh.set_wm_state(self.clientWindow, self.wm_states)
+        self.addWMState(EWMHWindowState.Focused)
 
-        xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
-                CW.BackPixel: self.wm.focusedBorderColor,
-                })).check()
+        if self.frameWindowID is not None:
+            #XXX: HACK until I figure out why cairo drawing isn't working for the background any more
+            xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
+                    CW.BackPixel: self.wm.focusedBorderColor,
+                    })).check()
 
-        self.applyTheme()
+            self.applyTheme()
 
     def onLostFocus(self):
+        self.logger.debug("onLostFocus")
         self.focused = False
-        self.wm_states.remove(atom('_NET_WM_STATE_FOCUSED'))
-        ewmh.set_wm_state(self.clientWindow, self.wm_states)
+        self.removeWMState(EWMHWindowState.Focused)
 
-        xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
-                CW.BackPixel: self.wm.unfocusedBorderColor,
-                })).check()
+        if self.frameWindowID is not None:
+            #XXX: HACK until I figure out why cairo drawing isn't working for the background any more
+            xpybutil.conn.core.ChangeWindowAttributesChecked(self.frameWindowID, *convertAttributes({
+                    CW.BackPixel: self.wm.unfocusedBorderColor,
+                    })).check()
 
-        self.applyTheme()
+            self.applyTheme()
 
-    def applyTheme(self):
-        ewmh.set_wm_window_opacity(self.frameWindowID, self.theme.opacity)
-
+    ## Properties ####
     @property
     def innerWidth(self):
         return self.width - 2 * self.theme.border.width
@@ -244,6 +333,11 @@ class WindowFrame(object):
             return settings.theme.focused
         else:
             return settings.theme.unfocused
+
+    ## Visual Stuff ####
+    def applyTheme(self):
+        ewmh.set_wm_window_opacity(self.frameWindowID, self.theme.window.opacity)
+        self.paint()
 
     def paint(self):
         self.context.set_operator(cairo.OPERATOR_OVER)

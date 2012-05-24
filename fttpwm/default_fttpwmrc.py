@@ -2,7 +2,6 @@ from fttpwm.keyboard import bindKeys
 from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
 from fttpwm.utils import startApp, quit
 from fttpwm.themes import Theme, State, Region, DefaultTitlebar
-from fttpwm.themes.gradients import Direction
 import fttpwm.themes.fonts as fonts
 
 

@@ -145,6 +145,7 @@ class Default(BaseTheme):
         gradient, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = self.getFrameThemeValues(
                 frame, *'gradient textColor fontFace fontSlant fontWeight fontSize titlebarHeight'.split())
 
+        # Draw titlebar background (and window border, since we're using ctx.paint instead of ctx.fill)
         gradient.set_matrix(cairo.Matrix(
                 xx=1 / float(frame.width),
                 yy=1 / float(titlebarHeight)
@@ -152,11 +153,33 @@ class Default(BaseTheme):
         ctx.set_source(gradient)
         ctx.paint()
 
+        # Draw outer titlebar bevel
+        ctx.set_line_width(1)
+        ctx.set_line_join(cairo.LINE_JOIN_MITER)
+        ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
+
+        # ...highlight
+        ctx.new_path()
+        ctx.move_to(0.5, titlebarHeight - 1.5)
+        ctx.line_to(0.5, 0.5)
+        ctx.line_to(frame.width - 1.5, 0.5)
+        ctx.set_source_rgba(1, 1, 1, 0.3)
+        ctx.stroke()
+
+        # ...shadow
+        ctx.move_to(frame.width - 0.5, 1.5)
+        ctx.line_to(frame.width - 0.5, titlebarHeight - 0.5)
+        ctx.line_to(1.5, titlebarHeight - 0.5)
+        ctx.set_source_rgba(0, 0, 0, 0.3)
+        ctx.stroke()
+
+        # Set up title text drawing
         ctx.set_source_rgba(*textColor)
         ctx.select_font_face(fontFace, fontSlant, fontWeight)
         ctx.set_font_options(fonts.options.fontOptions)
         ctx.set_font_size(fontSize)
 
+        # Draw title text
         title = frame.title
         width = frame.width
         xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
@@ -165,20 +188,3 @@ class Default(BaseTheme):
                 (titlebarHeight - textHeight) / 2 - yBearing
                 )
         ctx.show_text(title)
-
-        ctx.set_line_width(1)
-        ctx.set_line_join(cairo.LINE_JOIN_MITER)
-        ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
-
-        ctx.new_path()
-        ctx.move_to(0.5, titlebarHeight - 1.5)
-        ctx.line_to(0.5, 0.5)
-        ctx.line_to(frame.width - 1.5, 0.5)
-        ctx.set_source_rgba(1, 1, 1, 0.3)
-        ctx.stroke()
-
-        ctx.move_to(frame.width - 0.5, 1.5)
-        ctx.line_to(frame.width - 0.5, titlebarHeight - 0.5)
-        ctx.line_to(1.5, titlebarHeight - 0.5)
-        ctx.set_source_rgba(0, 0, 0, 0.3)
-        ctx.stroke()

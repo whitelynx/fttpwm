@@ -18,11 +18,11 @@ def linearGradient(orientation, *colors):
 
     if len(colors) == 1 and isinstance(colors[0], dict):
         for position, color in sorted(colors[0].iteritems()):
-            addColorStop(gradient, position, color)
+            gradient.add_color_stop_rgba(position, *color)
 
     else:
         for index, color in enumerate(colors):
             position = float(index) / (len(colors) - 1)
-            addColorStop(gradient, position, color)
+            gradient.add_color_stop_rgba(position, *color)
 
     return gradient

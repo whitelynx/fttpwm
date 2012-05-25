@@ -13,17 +13,6 @@ class Direction(object):
     diagonalUpRight = 0, 1, 1, 0
 
 
-def addColorStop(gradient, position, color):
-    if len(color) == 3:
-        gradient.add_color_stop_rgb(position, *color)
-
-    elif len(color) == 4:
-        gradient.add_color_stop_rgba(position, *color)
-
-    else:
-        logger.error("Invalid color: %r", color)
-
-
 def linearGradient(orientation, *colors):
     gradient = cairo.LinearGradient(*orientation)
 

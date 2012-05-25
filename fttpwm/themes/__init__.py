@@ -2,6 +2,8 @@ from argparse import Namespace
 import logging
 import re
 
+import xpybutil.ewmh as ewmh
+
 import cairo
 
 from . import fonts, gradients
@@ -28,6 +30,9 @@ class Color(object):
                     if match.group('a') is not None:
                         self.a = conv(match.group('a'))
 
+    def __iter__(self):
+        return iter((self.r, self.g, self.b, self.a))
+
     @classmethod
     def rgb(cls, r, g, b):
         color = cls()
@@ -47,36 +52,24 @@ class Region(Namespace):
     pass
 
 
-class Default(object):
-    normal = dict(
-            titlebarHeight=16,
-            textColor=Color.rgb(0, 0, 0),
-            fontFace="drift",
-            fontSize=5,
-            fontSlant=fonts.slant.normal,
-            fontWeight=fonts.weight.normal,
-            bgFrom=Color.rgb(0.8, 0.7, 0.3),
-            bgTo=Color.rgb(0.8, 0.5, 0.3),
-            bgOrientation=gradients.Direction.vertical,
-            )
-    focused = dict(
-            bgFrom=Color.rgb(1, 0.9, 0),
-            bgTo=Color.rgb(1, 0.3, 0),
-            )
-
+class BaseTheme(object):
     def __init__(self):
-        normalGradient = cairo.LinearGradient(*self.getThemeValue('bgOrientation'))
-        gradients.addColorStop(normalGradient, 0, self.getThemeValue('bgFrom'))
-        gradients.addColorStop(normalGradient, 1, self.getThemeValue('bgTo'))
-        self.normal['gradient'] = normalGradient
-
-        focusedGradient = cairo.LinearGradient(*self.getThemeValue('bgOrientation', True))
-        gradients.addColorStop(focusedGradient, 0, self.getThemeValue('bgFrom', True))
-        gradients.addColorStop(focusedGradient, 1, self.getThemeValue('bgTo', True))
-        self.focused['gradient'] = focusedGradient
+        self.currentFrame = None
 
     def __getitem__(self, key):
-        return self.getThemeValue(key, self.currentFrame.focused)
+        return self.getFrameThemeValue(self.currentFrame, key)
+
+    def getFrameThemeValues(self, frame, *keys):
+        return self.getThemeValues(*keys, focused=frame.focused)
+
+    def getFrameThemeValue(self, frame, key):
+        return self.getThemeValue(key, focused=frame.focused)
+
+    def getThemeValues(self, *keys, **state):
+        return tuple(
+                self.getThemeValue(key, **state)
+                for key in keys
+                )
 
     def getThemeValue(self, key, focused=False):
         normalVal = self.normal[key]
@@ -86,23 +79,88 @@ class Default(object):
 
         return normalVal
 
+    def getFrameSizes(self, frame):
+        """Retrieve the frame sizes appropriate for the given frame's window.
+
+        Returns a tuple of frame sizes: (left, right, top, bottom)
+
+        The ordering of the results is meant to follow the ordering of _NET_FRAME_EXTENTS from the EWMH specification.
+
+        """
+        return self.getFrameThemeValues(frame, 'borderWidth', 'borderWidth', 'titlebarHeight', 'borderWidth')
+
+    def getClientGeometry(self, frame):
+        """Retrieve the desired window geometry for the given frame's window, relative to the frame.
+
+        Returns a tuple: (x, y, width, height)
+
+        The ordering of the results is meant to follow the ordering of XMoveResizeWindow and the convention for window
+        geometry in X.
+
+        """
+        left, right, top, bottom = self.getFrameSizes(frame)
+        return left, top, (frame.width - left - right), (frame.height - top - bottom)
+
+    def apply(self, frame):
+        ewmh.set_frame_extents(frame.clientWindowID, *self.getFrameSizes(frame))
+        ewmh.set_wm_window_opacity(frame.frameWindowID, self.getFrameThemeValue(frame, 'opacity'))
+
+
+class Default(BaseTheme):
+    normal = dict(
+            titlebarHeight=16,
+            borderWidth=1,
+            textColor=Color.rgb(0, 0, 0),
+            fontFace="drift",
+            fontSize=5,
+            fontSlant=fonts.slant.normal,
+            fontWeight=fonts.weight.normal,
+            bgFrom=Color.rgb(0.8, 0.7, 0.3),
+            bgTo=Color.rgb(0.8, 0.5, 0.3),
+            bgOrientation=gradients.Direction.vertical,
+            opacity=.7,
+            )
+    focused = dict(
+            bgFrom=Color.rgb(1, 0.9, 0),
+            bgTo=Color.rgb(1, 0.3, 0),
+            opacity=1,
+            )
+
+    def __init__(self):
+        super(Default, self).__init__()
+
+        bgOrientation, bgFrom, bgTo = self.getThemeValues(*'bgOrientation bgFrom bgTo'.split())
+        normalGradient = cairo.LinearGradient(*bgOrientation)
+        normalGradient.add_color_stop_rgba(0, *bgFrom)
+        normalGradient.add_color_stop_rgba(1, *bgTo)
+        self.normal['gradient'] = normalGradient
+
+        bgOrientation, bgFrom, bgTo = self.getThemeValues(*'bgOrientation bgFrom bgTo'.split(), focused=True)
+        focusedGradient = cairo.LinearGradient(*bgOrientation)
+        focusedGradient.add_color_stop_rgba(0, *bgFrom)
+        focusedGradient.add_color_stop_rgba(1, *bgTo)
+        self.focused['gradient'] = focusedGradient
+
     def paintWindow(self, ctx, frame):
-        ctx.set_source(self.gradient)
+        gradient, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = self.getFrameThemeValues(
+                frame, *'gradient textColor fontFace fontSlant fontWeight fontSize titlebarHeight'.split())
+
+        gradient.set_matrix(cairo.Matrix(
+                xx=1 / float(frame.width),
+                yy=1 / float(titlebarHeight)
+                ))
+        ctx.set_source(gradient)
         ctx.paint()
 
-        if len(self.textColor) == 3:
-            ctx.set_source_rgb(*self.textColor)
-        elif len(self.textColor) == 4:
-            ctx.set_source_rgba(*self.textColor)
-        ctx.select_font_face(self.fontFace, self.fontSlant, self.fontWeight)
+        ctx.set_source_rgba(*textColor)
+        ctx.select_font_face(fontFace, fontSlant, fontWeight)
         ctx.set_font_options(fonts.options.fontOptions)
+        ctx.set_font_size(fontSize)
 
-        userFontEmSize, _ = ctx.device_to_user_distance(self.fontSize, 0)
-        ctx.set_font_size(userFontEmSize)
-
-        xBearing, yBearing, textWidth, textHeight = ctx.text_extents(frame.title)[:4]
+        title = frame.title
+        xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
         ctx.move_to(
-                0.5 - textWidth / 2 - xBearing,
-                0.5 - textHeight / 2 - yBearing
+                (frame.width - textWidth) / 2 - xBearing,
+                (titlebarHeight - textHeight) / 2 - yBearing
                 )
-        ctx.show_text(frame.title)
+        ctx.show_text(title)

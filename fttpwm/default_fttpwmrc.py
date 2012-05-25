@@ -1,7 +1,7 @@
 from fttpwm.keyboard import bindKeys
 from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
 from fttpwm.utils import startApp, quit
-from fttpwm.themes import Theme, State, Region, DefaultTitlebar
+from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
 
 
@@ -18,26 +18,7 @@ bindMouse({
         META + '3': raiseAndResizeWindow,
         })
 
-theme = Theme(
-        focused=State(
-            window=Region(
-                opacity=1,
-                ),
-            titlebar=DefaultTitlebar(),
-            border=Region(
-                width=1,
-                ),
-            ),
-        unfocused=State(
-            window=Region(
-                opacity=0.7,
-                ),
-            titlebar=DefaultTitlebar(bgFrom=(0.8, 0.7, 0.3), bgTo=(0.8, 0.5, 0.3)),
-            border=Region(
-                width=1,
-                ),
-            ),
-        )
+theme = Default()
 
 fonts.options.set(
         antialias=fonts.antialias.default,

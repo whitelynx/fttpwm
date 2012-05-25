@@ -25,33 +25,14 @@ from .bind import FilteredHandler
 from .ewmh import EWMHAction, EWMHWindowState
 from .mouse import bindMouse, raiseAndMoveWindow
 from .settings import settings
-from .themes import Theme, State, Region, DefaultTitlebar, fonts
+from .themes import Default, fonts
 from .utils import convertAttributes
 
 
 UINT32_MAX = 2 ** 32
 
 settings.setDefaults(
-        theme=Theme(
-            focused=State(
-                window=Region(
-                    opacity=1,
-                    ),
-                titlebar=DefaultTitlebar(),
-                border=Region(
-                    width=1,
-                    ),
-                ),
-            unfocused=State(
-                window=Region(
-                    opacity=0.7,
-                    ),
-                titlebar=DefaultTitlebar(bgFrom=(0.8, 0.7, 0.3), bgTo=(0.8, 0.5, 0.3)),
-                border=Region(
-                    width=1,
-                    ),
-                ),
-            )
+        theme=Default()
         )
 
 # Default font options
@@ -111,10 +92,6 @@ class WindowFrame(object):
         #if atom('_NET_WM_PING') in icccm.get_wm_protocols(clientWindowID).reply():
         #    self.startPing()
 
-        leftFrame = rightFrame = bottomFrame = self.theme.border.width
-        topFrame = self.theme.titlebar.height
-        ewmh.set_frame_extents(clientWindowID, leftFrame, rightFrame, topFrame, bottomFrame)
-
         # Get window geometry.
         geom = cookies.geometry.reply()
         del cookies.geometry
@@ -134,12 +111,14 @@ class WindowFrame(object):
         cookies.setTitle = ewmh.set_wm_name_checked(self.frameWindowID, self.title)
 
         # Reparent client window to frame.
-        xpybutil.conn.core.ReparentWindow(clientWindowID, self.frameWindowID, leftFrame, topFrame)
+        clientX, clientY = settings.theme.getClientGeometry(self)[:2]
+        xpybutil.conn.core.ReparentWindow(clientWindowID, self.frameWindowID, clientX, clientY)
 
         # Set up Cairo.
         self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, wm.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
 
+        self.applyTheme()
         self.subscribeToEvents()
         self.activateBindings()
 
@@ -227,7 +206,10 @@ class WindowFrame(object):
             self.wm.focusWindow(self)
 
     def onExpose(self, event):
-        self.paint()
+        # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
+        # collapse such series into a single call to paint() so we don't get extraneous redraws.
+        if event.count == 0:
+            self.paint()
 
     def onMapNotify(self, event):
         self.wm.notifyVisible(self)
@@ -297,32 +279,25 @@ class WindowFrame(object):
     ## Properties ####
     @property
     def innerWidth(self):
-        return self.width - 2 * self.theme.border.width
+        return self.innerGeometry[2]
 
     @property
     def innerHeight(self):
-        return self.height - self.theme.border.width - self.theme.titlebar.height
+        return self.innerGeometry[3]
 
     @property
-    def theme(self):
-        if self.focused:
-            return settings.theme.focused
-        else:
-            return settings.theme.unfocused
+    def innerGeometry(self):
+        return settings.theme.getClientGeometry(self)
 
     ## Visual Stuff ####
     def applyTheme(self):
-        ewmh.set_wm_window_opacity(self.frameWindowID, self.theme.window.opacity)
+        settings.theme.apply(self)
         self.paint()
 
     def paint(self):
         self.context.set_operator(cairo.OPERATOR_OVER)
 
-        self.context.set_matrix(cairo.Matrix(
-                xx=self.width,
-                yy=self.theme.titlebar.height
-                ))
-        self.theme.titlebar(self.context, self)
+        settings.theme.paintWindow(self.context, self)
 
         self.surface.flush()
         xpybutil.conn.flush()

@@ -158,9 +158,27 @@ class Default(BaseTheme):
         ctx.set_font_size(fontSize)
 
         title = frame.title
+        width = frame.width
         xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
         ctx.move_to(
-                (frame.width - textWidth) / 2 - xBearing,
+                (width - textWidth) / 2 - xBearing,
                 (titlebarHeight - textHeight) / 2 - yBearing
                 )
         ctx.show_text(title)
+
+        ctx.set_line_width(1)
+        ctx.set_line_join(cairo.LINE_JOIN_MITER)
+        ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
+
+        ctx.new_path()
+        ctx.move_to(0.5, titlebarHeight - 1.5)
+        ctx.line_to(0.5, 0.5)
+        ctx.line_to(frame.width - 1.5, 0.5)
+        ctx.set_source_rgba(1, 1, 1, 0.3)
+        ctx.stroke()
+
+        ctx.move_to(frame.width - 0.5, 1.5)
+        ctx.line_to(frame.width - 0.5, titlebarHeight - 0.5)
+        ctx.line_to(1.5, titlebarHeight - 0.5)
+        ctx.set_source_rgba(0, 0, 0, 0.3)
+        ctx.stroke()

@@ -1,4 +1,3 @@
-from argparse import Namespace
 import logging
 import re
 
@@ -6,10 +5,11 @@ import xpybutil.ewmh as ewmh
 
 import cairo
 
-from . import fonts, gradients
+from . import fonts
+from .gradients import linearGradient, Direction
 
 
-logger = logging.getLogger("fttpwm.themes.gradients")
+logger = logging.getLogger("fttpwm.themes")
 
 
 class Color(object):
@@ -39,17 +39,11 @@ class Color(object):
         color.r, color.g, color.b = r, g, b
         return color
 
-
-class Theme(Namespace):
-    pass
-
-
-class State(Namespace):
-    pass
-
-
-class Region(Namespace):
-    pass
+    @classmethod
+    def rgba(cls, r, g, b, a):
+        color = cls()
+        color.r, color.g, color.b, color.a = r, g, b, a
+        return color
 
 
 class BaseTheme(object):
@@ -115,42 +109,32 @@ class Default(BaseTheme):
             fontSize=5,
             fontSlant=fonts.slant.normal,
             fontWeight=fonts.weight.normal,
-            bgFrom=Color.rgb(0.8, 0.7, 0.3),
-            bgTo=Color.rgb(0.8, 0.5, 0.3),
-            bgOrientation=gradients.Direction.vertical,
+            background=linearGradient(Direction.vertical, Color.rgb(.8, .7, .3), Color.rgb(.8, .5, .3)),
+            innerBackground=None,
             opacity=.7,
             )
     focused = dict(
-            bgFrom=Color.rgb(1, 0.9, 0),
-            bgTo=Color.rgb(1, 0.3, 0),
+            textColor=Color.rgb(1, 1, 1),
+            background=linearGradient(Direction.vertical, Color.rgb(1, .9, 0), Color.rgb(1, .3, 0)),
+            innerBackground=linearGradient(Direction.vertical, Color.rgba(0, 0, 0, .7), Color.rgba(.2, .2, .2, .5)),
             opacity=1,
             )
 
     def __init__(self):
         super(Default, self).__init__()
 
-        bgOrientation, bgFrom, bgTo = self.getThemeValues(*'bgOrientation bgFrom bgTo'.split())
-        normalGradient = cairo.LinearGradient(*bgOrientation)
-        normalGradient.add_color_stop_rgba(0, *bgFrom)
-        normalGradient.add_color_stop_rgba(1, *bgTo)
-        self.normal['gradient'] = normalGradient
-
-        bgOrientation, bgFrom, bgTo = self.getThemeValues(*'bgOrientation bgFrom bgTo'.split(), focused=True)
-        focusedGradient = cairo.LinearGradient(*bgOrientation)
-        focusedGradient.add_color_stop_rgba(0, *bgFrom)
-        focusedGradient.add_color_stop_rgba(1, *bgTo)
-        self.focused['gradient'] = focusedGradient
-
     def paintWindow(self, ctx, frame):
-        gradient, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = self.getFrameThemeValues(
-                frame, *'gradient textColor fontFace fontSlant fontWeight fontSize titlebarHeight'.split())
+        GFTV = lambda x: self.getFrameThemeValues(frame, *x.split())
+        background, innerBackground, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = GFTV(
+                'background innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
+                )
 
         # Draw titlebar background (and window border, since we're using ctx.paint instead of ctx.fill)
-        gradient.set_matrix(cairo.Matrix(
+        background.set_matrix(cairo.Matrix(
                 xx=1 / float(frame.width),
                 yy=1 / float(titlebarHeight)
                 ))
-        ctx.set_source(gradient)
+        ctx.set_source(background)
         ctx.paint()
 
         # Draw outer titlebar bevel
@@ -159,7 +143,6 @@ class Default(BaseTheme):
         ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
 
         # ...highlight
-        ctx.new_path()
         ctx.move_to(0.5, titlebarHeight - 1.5)
         ctx.line_to(0.5, 0.5)
         ctx.line_to(frame.width - 1.5, 0.5)
@@ -172,6 +155,33 @@ class Default(BaseTheme):
         ctx.line_to(1.5, titlebarHeight - 0.5)
         ctx.set_source_rgba(0, 0, 0, 0.3)
         ctx.stroke()
+
+        # Draw inner bevel
+        if innerBackground is not None:
+            # ...highlight
+            ctx.move_to(frame.width - 17.5, 3.5)
+            ctx.line_to(frame.width - 17.5, titlebarHeight - 1.5)
+            ctx.line_to(18.5, titlebarHeight - 1.5)
+            ctx.set_source_rgba(1, 1, 1, 0.3)
+            ctx.stroke()
+
+            # ...shadow
+            ctx.move_to(17.5, titlebarHeight - 2.5)
+            ctx.line_to(17.5, 1.5)
+            ctx.line_to(frame.width - 18.5, 1.5)
+            ctx.set_source_rgba(0, 0, 0, 0.3)
+            ctx.stroke()
+
+            # Draw title (inner) background
+            ctx.rectangle(2 + 16, 2, frame.width - 4 - 32, titlebarHeight - 4)
+            innerBackground.set_matrix(cairo.Matrix(
+                    xx=1 / float(frame.width - 4 - 32),
+                    yy=1 / float(titlebarHeight - 4),
+                    x0=1 / float(-2 - 16),
+                    y0=1 / float(-2)
+                    ))
+            ctx.set_source(innerBackground)
+            ctx.fill()
 
         # Set up title text drawing
         ctx.set_source_rgba(*textColor)

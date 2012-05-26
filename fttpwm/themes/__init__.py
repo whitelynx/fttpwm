@@ -116,7 +116,7 @@ class Default(BaseTheme):
     focused = dict(
             textColor=Color.rgb(1, 1, 1),
             background=linearGradient(Direction.vertical, Color.rgb(1, .9, 0), Color.rgb(1, .3, 0)),
-            innerBackground=linearGradient(Direction.vertical, Color.rgba(0, 0, 0, .7), Color.rgba(.2, .2, .2, .5)),
+            innerBackground=linearGradient(Direction.vertical, Color.rgba(0, 0, 0, .8), Color.rgba(0, 0, 0, .5)),
             opacity=1,
             )
 
@@ -173,13 +173,16 @@ class Default(BaseTheme):
             ctx.stroke()
 
             # Draw title (inner) background
+            innerBGMatrix = cairo.Matrix()
+            innerBGMatrix.translate(2 + 16, 2)
+            innerBGMatrix.scale(
+                    frame.width - 4 - 32,
+                    titlebarHeight - 4,
+                    )
+            innerBGMatrix.invert()
+
             ctx.rectangle(2 + 16, 2, frame.width - 4 - 32, titlebarHeight - 4)
-            innerBackground.set_matrix(cairo.Matrix(
-                    xx=1 / float(frame.width - 4 - 32),
-                    yy=1 / float(titlebarHeight - 4),
-                    x0=1 / float(-2 - 16),
-                    y0=1 / float(-2)
-                    ))
+            innerBackground.set_matrix(innerBGMatrix)
             ctx.set_source(innerBackground)
             ctx.fill()
 

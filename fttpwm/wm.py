@@ -25,6 +25,8 @@ from .settings import settings
 from .utils import convertAttributes
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
+from .signaled import SignaledDict
+from .workspace import WorkspaceManager
 
 
 logger = logging.getLogger("fttpwm.wm")
@@ -68,18 +70,18 @@ class WM(object):
         self.depth = self.screen.root_depth
         self.visualID = self.screen.root_visual
         self.visual = self.findCurrentVisual()
-        self.desktopWidth = self.screen.width_in_pixels
-        self.desktopHeight = self.screen.height_in_pixels
+        self.screenWidth = self.screen.width_in_pixels
+        self.screenHeight = self.screen.height_in_pixels
         self.colormap = self.screen.default_colormap
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
 
-        self.focusedBorderColor = self.allocColor(Color.float(.25, .5, 0))
-        self.unfocusedBorderColor = self.allocColor(Color.float(.25, .25, .25))
+        self.windows = SignaledDict()
+        self.windows.updated.connect(self.updateWindowList)
 
-        self.windows = dict()
-        self.visibleWindows = dict()
+        self.workspaces = WorkspaceManager(self)
+
         self.focusedWindow = None
 
         self.checkForOtherWMs()
@@ -129,7 +131,7 @@ class WM(object):
 
         self.setWMChildProps()
         self.setRootProps()
-        self.setDesktopProps()
+        self.workspaces.setEWMHProps()
 
         logger.debug("startManaging: Subscribing to events.")
 
@@ -189,7 +191,9 @@ class WM(object):
         ewmh.set_supporting_wm_check(self.root, self.ewmhChildWindow)
         ewmh.set_supported([
                 # Root Window Properties (and Related Messages)
-                atom('_NET_SUPPORTED'), atom('_NET_CLIENT_LIST'), atom('_NET_NUMBER_OF_DESKTOPS'),
+                atom('_NET_SUPPORTED'),
+                atom('_NET_CLIENT_LIST'), atom('_NET_CLIENT_LIST_STACKING'),
+                atom('_NET_NUMBER_OF_DESKTOPS'),
                 atom('_NET_DESKTOP_GEOMETRY'), atom('_NET_DESKTOP_VIEWPORT'), atom('_NET_CURRENT_DESKTOP'),
                 atom('_NET_DESKTOP_NAMES'), atom('_NET_ACTIVE_WINDOW'), atom('_NET_WORKAREA'),
                 atom('_NET_SUPPORTING_WM_CHECK'),
@@ -200,15 +204,24 @@ class WM(object):
                 #atom('_NET_RESTACK_WINDOW'), atom('_NET_REQUEST_FRAME_EXTENTS'),
 
                 # Application Window Properties
-                atom('_NET_WM_NAME'), atom('_NET_WM_ICON_NAME'), atom('_NET_WM_DESKTOP'), atom('_NET_WM_WINDOW_TYPE'),
-                atom('_NET_WM_STATE'), atom('_NET_WM_ALLOWED_ACTIONS'), atom('_NET_WM_PID'),
+                #   set by WM
+                atom('_NET_WM_DESKTOP'),  # Also may be set by client before initially mapping window
+                atom('_NET_WM_STATE'), atom('_NET_WM_ALLOWED_ACTIONS'),
+                #   set by client
+                atom('_NET_WM_NAME'), atom('_NET_WM_ICON_NAME'),
+                atom('_NET_WM_WINDOW_TYPE'),
+                atom('_NET_WM_PID'), atom('WM_CLIENT_MACHINE'),  # Support for killing hung processes
                 atom('_NET_FRAME_EXTENTS'),
-                #atom('_NET_WM_VISIBLE_NAME'), atom('_NET_WM_VISIBLE_ICON_NAME'), atom('_NET_WM_STRUT'),
-                #atom('_NET_WM_STRUT_PARTIAL'), atom('_NET_WM_ICON_GEOMETRY'), atom('_NET_WM_ICON'),
-                #atom('_NET_WM_HANDLED_ICONS'), atom('_NET_WM_USER_TIME'),
+                #atom('_NET_WM_VISIBLE_NAME'), atom('_NET_WM_VISIBLE_ICON_NAME'),
+                #atom('_NET_WM_STRUT'), atom('_NET_WM_STRUT_PARTIAL'),
+                #atom('_NET_WM_ICON_GEOMETRY'), atom('_NET_WM_ICON'),
+                #atom('_NET_WM_USER_TIME'),  # Support for user activity tracking and startup notification
+                #   set by pagers, etc.
+                #atom('_NET_WM_HANDLED_ICONS'),  # Support for taskbars/pagers that display icons for iconified windows
 
                 # Window Manager Protocols
-                #atom('_NET_WM_PING'), atom('_NET_WM_SYNC_REQUEST'),
+                #atom('_NET_WM_PING'),  # Support for killing hung processes
+                #atom('_NET_WM_SYNC_REQUEST'),
 
                 # _NET_WM_ALLOWED_ACTIONS values
                 EWMHAction.Move, EWMHAction.Resize, EWMHAction.Close,
@@ -226,19 +239,6 @@ class WM(object):
                 #EWMHWindowType.Desktop, EWMHWindowType.Dock, EWMHWindowType.Toolbar, EWMHWindowType.Menu,
                 #EWMHWindowType.Utility, EWMHWindowType.Splash, EWMHWindowType.Dialog,
                 ])
-
-    def setDesktopProps(self):
-        desktops = settings.desktops
-        ewmh.set_desktop_names(settings.desktops)
-        ewmh.set_number_of_desktops(len(settings.desktops))
-        ewmh.set_current_desktop(settings.initialDesktop)
-        ewmh.set_desktop_geometry(self.desktopWidth, self.desktopHeight)
-        ewmh.set_workarea(
-                [{'x': 0, 'y': 0, 'width': self.desktopWidth, 'height': self.desktopHeight}] * len(settings.desktops)
-                )
-        ewmh.set_desktop_viewport(
-                [{'x': 0, 'y': 0}] * len(settings.desktops)
-                )
 
     def createWindow(self, x, y, width, height, attributes={}, windowID=None, parentID=None, borderWidth=0,
             windowClass=WindowClass.InputOutput, checked=False):
@@ -286,10 +286,10 @@ class WM(object):
     ## Individual client management ####
     def manageWindow(self, clientWindow):
         if clientWindow in self.windows:
-            logger.debug("manageWindow: Window %r is already in our list of clients; ignoring call.", clientWindow)
+            logger.warn("manageWindow: Window %r is already in our list of clients; ignoring call.", clientWindow)
             return
 
-        logger.debug("Managing window %r...", clientWindow)
+        logger.debug("manageWindow: Managing window %r...", clientWindow)
 
         cookies = []
         cookies.append(xpybutil.conn.core.ChangeSaveSetChecked(SetMode.Insert, clientWindow))
@@ -300,36 +300,20 @@ class WM(object):
         ewmh.set_wm_desktop(clientWindow, 0)
 
         frame = WindowFrame(self, clientWindow)
-        logger.debug("Created new frame: %r", frame)
+        logger.debug("manageWindow: Created new frame: %r", frame)
 
         self.windows[clientWindow] = frame
-        self.updateWindows()
+        self.workspaces.placeOnWorkspace(frame)
 
     def unmanageWindow(self, frame):
         if frame.clientWindowID not in self.windows:
             logger.warn("unmanageWindow: client window of %r is not a recognized client! Ignoring call.", frame)
             return
 
-        logger.debug("Unmanaging client window of %r...", frame)
+        logger.debug("unmanageWindow: Unmanaging client window of %r...", frame)
 
         del self.windows[frame.clientWindowID]
-        self.visibleWindows.pop(frame.clientWindowID, None)
-        self.updateWindows()
-
-    def notifyVisible(self, frame):
-        logger.debug("notifyVisible: %r is now visible.", frame)
-        self.visibleWindows[frame.clientWindowID] = frame
-        self.updateWindows()
-
-    def hideFrame(self, frame):
-        logger.debug("hideFrame: Hiding %r.", frame)
-        try:
-            xpybutil.conn.core.UnmapWindowChecked(frame.frameWindowID).check()
-        except:
-            logger.exception("hideFrame: Error unmapping %r!", frame)
-            return
-
-        self.visibleWindows.pop(frame.clientWindowID, None)
+        self.workspaces.removeWindow(frame)
 
     def focusWindow(self, frame):
         logger.debug("focusWindow: Focusing %r.", frame)
@@ -352,34 +336,10 @@ class WM(object):
 
         xpybutil.conn.flush()
 
-    ## Window layout ####
-    def updateWindows(self):
+    ## Managed windows ####
+    def updateWindowList(self):
         ewmh.set_client_list(self.windows)
-        self.rearrangeWindows()
-
-    def rearrangeWindows(self):
-        windowCount = len(self.visibleWindows)
-        if windowCount == 0:
-            return
-
-        x = 0
-        y = 0
-        width = self.desktopWidth / windowCount
-        height = self.desktopHeight
-
-        for frame in self.visibleWindows.values():
-            #TODO: Move this into WindowFrame.
-            attributes = convertAttributes({
-                    ConfigWindow.X: x,
-                    ConfigWindow.Y: y,
-                    ConfigWindow.Width: width,
-                    ConfigWindow.Height: height,
-                    ConfigWindow.StackMode: StackMode.Above
-                    })
-            xpybutil.conn.core.ConfigureWindow(frame.frameWindowID, *attributes)
-            x += width
-
-        xpybutil.conn.flush()
+        ewmh.set_client_list_stacking(self.windows)
 
     ## Event handlers ####
     def onSelectionRequest(self, event):
@@ -393,16 +353,9 @@ class WM(object):
         clientWindow = event.window
         logger.debug("onMapRequest: %r", clientWindow)
 
-        #TODO: Needed? (if override_redirect is set, we shouldn't ever receive this event!)
-        #try:
-        #    attribs = xpybutil.conn.GetWindowAttributes(clientWindow).reply()
-        #except:
-        #    logger.exception("onMapRequest: Error getting window attributes for window %r!", clientWindow)
-        #    return
-        #if attribs.override_redirect:
-        #    return
-
-        self.manageWindow(clientWindow)
+        # If we don't already have a frame for this client, create one.
+        if clientWindow not in self.windows:
+            self.manageWindow(clientWindow)
 
         try:
             xpybutil.conn.core.MapWindowChecked(clientWindow).check()
@@ -415,7 +368,7 @@ class WM(object):
         logger.info("Starting main event loop.")
 
         #xpybutil.event.main()
-        #XXX: HACK to work around the fact that xpybutil.event will never send us MapNotify, even if we've subscribed
+        #XXX: HACK to work around the fact that xpybutil.event will never send us MapRequest, even if we've subscribed
         # to SubstructureRedirect, and will never send us SelectionRequest when we own a selection. And yes, this is a
         # direct copy of xpybutil.event.main with some minor changes.
         try:

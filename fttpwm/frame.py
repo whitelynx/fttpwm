@@ -8,9 +8,7 @@ from argparse import Namespace
 import logging
 
 import xcb
-from xcb.xproto import Atom, CW, ConfigWindow, EventMask, PropMode, WindowClass
-from xcb.xproto import ButtonPressEvent, EnterNotifyEvent, LeaveNotifyEvent, KeyPressEvent
-from xcb.xproto import ExposeEvent, ConfigureNotifyEvent, MapNotifyEvent, UnmapNotifyEvent
+from xcb.xproto import CW, ConfigWindow, StackMode
 
 import xpybutil
 import xpybutil.event
@@ -23,6 +21,7 @@ import cairo
 
 from .bind import FilteredHandler
 from .ewmh import EWMHAction, EWMHWindowState
+from .icccm import ICCCMWindowState
 from .mouse import bindMouse, raiseAndMoveWindow
 from .settings import settings
 from .themes import Default, fonts
@@ -52,11 +51,16 @@ class WindowFrame(object):
         self.wm = wm
         self.frameWindowID = xpybutil.conn.generate_id()
         self.clientWindowID = clientWindowID
+
         self.focused = False
+        self.visible = False  # Whether or not this window is currently visible on the screen
+        self.viewable = False  # Whether or not this window would be visible if its workspace were shown
+
+        self._workspace = None
 
         self.windowAttributes = {
                 CW.OverrideRedirect: 1,
-                CW.BackPixel: wm.unfocusedBorderColor,
+                CW.BackPixel: wm.black,
                 }
 
         # Start fetching some information about the client window.
@@ -64,6 +68,7 @@ class WindowFrame(object):
         cookies.geometry = xpybutil.conn.core.GetGeometry(clientWindowID)
         cookies.ewmhTitle = ewmh.get_wm_name(clientWindowID)
         cookies.icccmTitle = icccm.get_wm_name(clientWindowID)
+        cookies.icccmProtocols = icccm.get_wm_protocols(clientWindowID)
         xpybutil.conn.flush()
 
         self.logger = logging.getLogger(
@@ -71,6 +76,8 @@ class WindowFrame(object):
                     self.frameWindowID,
                     self.clientWindowID
                     ))
+
+        icccm.set_wm_state(clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
 
         #TODO: Keep these updated where appropriate!
         self.wm_states = [EWMHWindowState.MaximizedVert]
@@ -108,6 +115,7 @@ class WindowFrame(object):
         del cookies.ewmhTitle
         del cookies.icccmTitle
 
+        # Set the frame's _NET_WM_NAME to match the client's title.
         cookies.setTitle = ewmh.set_wm_name_checked(self.frameWindowID, self.title)
 
         # Reparent client window to frame.
@@ -122,8 +130,9 @@ class WindowFrame(object):
         self.subscribeToEvents()
         self.activateBindings()
 
-        # Show window.
-        cookies.showWindow = xpybutil.conn.core.MapWindowChecked(self.frameWindowID)
+        # Get ICCCM _NET_WM_PROTOCOLS property.
+        self.protocols = cookies.icccmProtocols.reply()
+        del cookies.icccmProtocols
 
         # Flush the connection, and make sure all of our requests succeeded.
         xpybutil.conn.flush()
@@ -186,6 +195,40 @@ class WindowFrame(object):
                 '1': raiseAndMoveWindow,
                 })
 
+    ## Commands ####
+    def hide(self):
+        self.logger.debug("hide: Hiding %r.", self)
+        try:
+            xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
+        except:
+            self.logger.exception("hide: Error unmapping %r!", self)
+        else:
+            self.viewable = False
+            self.addWMState(EWMHWindowState.Hidden)
+
+    def show(self):
+        self.logger.debug("show: Showing %r.", self)
+        try:
+            xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
+        except:
+            self.logger.exception("show: Error mapping %r!", self)
+        else:
+            self.viewable = True
+            self.removeWMState(EWMHWindowState.Hidden)
+
+    def moveResize(self, x, y, width, height, flush=True):
+        attributes = convertAttributes({
+                ConfigWindow.X: x,
+                ConfigWindow.Y: y,
+                ConfigWindow.Width: width,
+                ConfigWindow.Height: height,
+                ConfigWindow.StackMode: StackMode.Above
+                })
+        xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *attributes)
+
+        if flush:
+            xpybutil.conn.flush()
+
     ## X events ####
     def onConfigureNotify(self, event):
         if (self.width, self.height) != (event.width, event.height):
@@ -212,8 +255,12 @@ class WindowFrame(object):
             self.paint()
 
     def onMapNotify(self, event):
-        self.wm.notifyVisible(self)
+        self.visible = True
+        self.viewable = True
         self.paint()
+
+    def onUnmapNotify(self, event):
+        self.visible = False
 
     def onClientUnmapNotify(self, event):
         self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
@@ -223,7 +270,7 @@ class WindowFrame(object):
             return
 
         try:
-            self.wm.hideFrame(self)
+            self.hide()
         except:
             self.logger.exception("Error hiding frame window!")
 
@@ -249,6 +296,7 @@ class WindowFrame(object):
 
             self.frameWindowID = None
 
+    ## Window State ####
     def addWMState(self, state):
         self.wm_states.append(state)
         if self.clientWindowID is not None:
@@ -276,6 +324,29 @@ class WindowFrame(object):
         if self.frameWindowID is not None:
             self.applyTheme()
 
+    def onWorkspaceVisibilityChanged(self):
+        if self.workspace.visible:
+            # If this window is viewable, map it.
+            if self.viewable:
+                self.logger.debug("onWorkspaceVisibilityChanged: Showing %r.", self)
+                try:
+                    xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
+                except:
+                    self.logger.exception("onWorkspaceVisibilityChanged: Error mapping %r!", self)
+
+                icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
+
+        else:
+            # If this window is currently visible, unmap it.
+            if self.visible:
+                self.logger.debug("onWorkspaceVisibilityChanged: Hiding %r.", self)
+                try:
+                    xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
+                except:
+                    self.logger.exception("onWorkspaceVisibilityChanged: Error unmapping %r!", self)
+
+                icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Iconic, xcb.NONE)
+
     ## Properties ####
     @property
     def innerWidth(self):
@@ -288,6 +359,20 @@ class WindowFrame(object):
     @property
     def innerGeometry(self):
         return settings.theme.getClientGeometry(self)
+
+    @property
+    def workspace(self):
+        return self._workspace
+
+    @workspace.setter
+    def workspace(self, workspace):
+        if self._workspace is not None:
+            self._workspace.visibilityChanged.disconnect(self.onWorkspaceVisibilityChanged)
+
+        self._workspace = workspace
+
+        self.onWorkspaceVisibilityChanged()
+        workspace.visibilityChanged.connect(self.onWorkspaceVisibilityChanged)
 
     ## Visual Stuff ####
     def applyTheme(self):

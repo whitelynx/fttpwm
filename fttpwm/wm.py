@@ -200,8 +200,13 @@ class WM(object):
                 #atom('_NET_VIRTUAL_ROOTS'), atom('_NET_DESKTOP_LAYOUT'), atom('_NET_SHOWING_DESKTOP'),
 
                 # Other Root Window Messages
-                #atom('_NET_CLOSE_WINDOW'), atom('_NET_MOVERESIZE_WINDOW'), atom('_NET_WM_MOVERESIZE'),
-                #atom('_NET_RESTACK_WINDOW'), atom('_NET_REQUEST_FRAME_EXTENTS'),
+                #   requests from client
+                #atom('_NET_WM_MOVERESIZE'),
+                #atom('_NET_REQUEST_FRAME_EXTENTS'),  # TODO: Handle this: set the given window's _NET_FRAME_EXTENTS.
+                #   requests from pagers, etc.
+                #atom('_NET_CLOSE_WINDOW'),
+                #atom('_NET_MOVERESIZE_WINDOW'),
+                #atom('_NET_RESTACK_WINDOW'),
 
                 # Application Window Properties
                 #   set by WM
@@ -212,10 +217,10 @@ class WM(object):
                 atom('_NET_WM_WINDOW_TYPE'),
                 atom('_NET_WM_PID'), atom('WM_CLIENT_MACHINE'),  # Support for killing hung processes
                 atom('_NET_FRAME_EXTENTS'),
-                #atom('_NET_WM_VISIBLE_NAME'), atom('_NET_WM_VISIBLE_ICON_NAME'),
-                #atom('_NET_WM_STRUT'), atom('_NET_WM_STRUT_PARTIAL'),
+                #atom('_NET_WM_VISIBLE_NAME'), atom('_NET_WM_VISIBLE_ICON_NAME'),  # TODO: Elide titles, and set these!
+                #atom('_NET_WM_STRUT'), atom('_NET_WM_STRUT_PARTIAL'),  # TODO: Support these, adjusting work area!
                 #atom('_NET_WM_ICON_GEOMETRY'), atom('_NET_WM_ICON'),
-                #atom('_NET_WM_USER_TIME'),  # Support for user activity tracking and startup notification
+                #atom('_NET_WM_USER_TIME'),  # TODO: Support for user activity tracking and startup notification
                 #   set by pagers, etc.
                 #atom('_NET_WM_HANDLED_ICONS'),  # Support for taskbars/pagers that display icons for iconified windows
 

@@ -32,24 +32,6 @@ from .workspace import WorkspaceManager
 logger = logging.getLogger("fttpwm.wm")
 
 settings.setDefaults(
-        desktops=[
-            'alpha',
-            'beta',
-            'gamma',
-            'delta',
-            'pi',
-            'omega',
-            'phlange',
-            'dromedary',
-            '°±²ÛÝÜßÞÛ²±°',
-            'û©ýðñ«ü¡',
-            'õõõõõõõõõõõõõõõõõõ',
-            'àáçëãê¯Ù§',
-            '¢Ã¿ªØ',
-            'äë¡áÀ£ ïüDîÚê3àr',
-            '¨ª¦¥¤£¢³ºÄÍÃÇÌÁÏÐÊØÎÒÑË´µ¶¹¿·¸»ÚÕÖÉ½¼¾ÙÀ­úöìíøïõéäîòõù®¬§àáçëãê¯',
-            ],
-        initialDesktop=0,
         )
 
 

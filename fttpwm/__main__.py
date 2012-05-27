@@ -7,6 +7,9 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 import logging
+import logging.config
+import os
+import sys
 
 from .wm import WM
 
@@ -54,16 +57,61 @@ logging.Manager.getLogger = getLogger
 #XXX: /HACK
 
 
-# Monochrome logging
-#logging.basicConfig(level=logging.NOTSET, datefmt="%H:%M:%S",
-#        format="%(asctime)s[%(levelname)-8s] %(name)s:  %(message)s")
+logConfig = {
+        "disable_existing_loggers": False,
+        "formatters": {
+            "brief": {
+                "datefmt": "%H:%M:%S",
+                "format": "%(asctime)s [%(levelname)-8s] %(name)s:  %(message)s"
+                },
+            "colored": {
+                "datefmt": "%H:%M:%S",
+                "format": u"%(asctime)s %(bold)s%(blackForeground)s[%(resetTerm)s"
+                    u"%(levelColor)s%(levelname)-8s%(resetTerm)s"
+                    u"%(bold)s%(blackForeground)s]%(resetTerm)s "
+                    u"%(cyanForeground)s%(name)s%(bold)s%(blackForeground)s:%(resetTerm)s  "
+                    u"%(faint)s%(italic)s%(message)s%(resetTerm)s"
+                },
+            "default": {
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+                "format": "%(asctime)s [%(levelname)-8s] %(name)s:  %(message)s"
+                }
+            },
+        "handlers": {
+            "basicConsole": {
+                "class": "logging.StreamHandler",
+                "formatter": "brief",
+                "stream": "ext://sys.stdout"
+                },
+            "colorConsole": {
+                "class": "fttpwm.colorlog.ColoredConsoleHandler",
+                "formatter": "colored",
+                "level": "NOTSET",
+                "stream": "ext://sys.stdout"
+                },
+            "file": {
+                "backupCount": 3,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": os.path.expanduser("~/.fttpwm.log"),
+                "formatter": "default",
+                "maxBytes": 1073741824
+                }
+            },
+        "root": {
+            "handlers": [
+                "basicConsole",
+                "file"
+                ],
+            "level": 0
+            },
+        "version": 1
+        }
 
-# Color logging (*NIX only)
-logging.basicConfig(level=logging.NOTSET,
-        datefmt="%H:%M:%S",
-        format="%(asctime)s {e}90m[{e}0;1m%(levelname)-8s{e}0;90m]{e}m {e}36m%(name)s{e}90m:{e}m  "
-            "{e}2;3m%(message)s{e}m".format(e='\033[')
-        )
+# If we're running on a normal TTY, use colored log output. (otherwise, we default to the basic non-colored output)
+if os.isatty(sys.stdout.fileno()):
+    logConfig["root"]["handlers"] = ["colorConsole", "file"]
+
+logging.config.dictConfig(logConfig)
 
 
 logger = logging.getLogger("fttpwm")

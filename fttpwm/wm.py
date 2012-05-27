@@ -59,9 +59,27 @@ class Color(object):
         return map(lambda x: int(x * 2 ** 16), components)
 
 
+class WMBindings(object):
+    @staticmethod
+    def switchWorkspace(ws):
+        """Switches to the given workspace.
+
+        """
+        def switchWorkspace_(*event):
+            logger.debug("Switching to workspace %r", ws)
+            WM.instance.workspaces.switchTo(ws)
+
+        return switchWorkspace_
+
+
 class WM(object):
+    instance = None
+
     def __init__(self):
         self.pid = os.getpid()
+
+        assert WM.instance is None
+        WM.instance = self
 
         self.setup = xpybutil.conn.get_setup()
         self.screenNumber = xpybutil.conn.pref_screen

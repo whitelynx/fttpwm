@@ -77,8 +77,8 @@ class WorkspaceManager(object):
         self.createConfiguredWorkspaces()
         self.setEWMHProps()
 
-        self.currentWorkspace = min(settings.initialWorkspace, len(self.workspaces) - 1)
-        self.workspaces[self.currentWorkspace].show()
+        self.currentWorkspaceNum = min(settings.initialWorkspace, len(self.workspaces) - 1)
+        self.currentWorkspace.show()
 
     def createConfiguredWorkspaces(self):
         del self.workspaces[:]
@@ -104,7 +104,7 @@ class WorkspaceManager(object):
         # workspace. The workspace will then set _NET_WM_DESKTOP to its index.
         workspaceNum = ewmh.get_wm_desktop(frame.clientWindowID)
         if workspaceNum is None or workspaceNum >= len(self.workspaces):
-            workspaceNum = self.currentWorkspace
+            workspaceNum = self.currentWorkspaceNum
 
         self.workspaces[workspaceNum].addWindow(frame)
 
@@ -113,6 +113,7 @@ class WorkspaceManager(object):
 
         for ws in self.workspaces:
             if frame.clientWindowID in ws.windows:
+                logger.debug("removeWindow: Found %r in workspace %r.", frame, ws.index)
                 del ws.windows[frame.clientWindowID]
 
     def setEWMHProps(self):
@@ -154,13 +155,32 @@ class WorkspaceManager(object):
         pass
 
     @property
+    def currentWorkspaceNum(self):
+        return self._currentWorkspaceNum
+
+    @currentWorkspaceNum.setter
+    def currentWorkspaceNum(self, value):
+        self._currentWorkspaceNum = value
+        ewmh.set_current_desktop(value)
+
+    @property
     def currentWorkspace(self):
-        return self._currentWorkspace
+        return self.workspaces[self.currentWorkspaceNum]
 
     @currentWorkspace.setter
-    def currentWorkspace(self, value):
-        self._currentWorkspace = value
-        ewmh.set_current_desktop(value)
+    def currentWorkspace(self, workspace):
+        self.currentWorkspaceNum = workspace.index
+
+    def switchTo(self, workspace):
+        if isinstance(workspace, basestring):
+            workspace = self.workspacesByName[workspace]
+        else:
+            workspace = self.workspaces[workspace]
+
+        self.currentWorkspace.hide()
+
+        workspace.show()
+        self.currentWorkspace = workspace
 
 
 class Workspace(object):
@@ -275,23 +295,13 @@ class Workspace(object):
         self.logger.debug("show: Showing.")
         ewmh.set_current_desktop(self.index)
 
-        for clientWindowID, frame in self.windows.iteritems():
-            try:
-                xpybutil.conn.core.MapWindowChecked(frame.frameWindowID).check()
-            except:
-                self.logger.exception("show: Error mapping window %r!", frame.frameWindowID)
-
+        # Frames will show themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
         self.visible = True
 
     def hide(self):
         self.logger.debug("hide: Hiding.")
 
-        for clientWindowID, frame in self.windows.iteritems():
-            try:
-                xpybutil.conn.core.UnmapWindowChecked(frame.frameWindowID).check()
-            except:
-                self.logger.exception("hide: Error unmapping window %r!", frame.frameWindowID)
-
+        # Frames will hide themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
         self.visible = False
 
     def addWindow(self, frame):

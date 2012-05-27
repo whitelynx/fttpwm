@@ -161,8 +161,7 @@ class WindowFrame(object):
         xpybutil.event.connect('UnmapNotify', self.clientWindowID, self.onClientUnmapNotify)
         xpybutil.event.connect('DestroyNotify', self.clientWindowID, self.onClientDestroyNotify)
 
-        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
-                'StructureNotify', 'SubstructureNotify')
+        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange')
 
     def unsubscribeFromEvents(self):
         self.logger.info("Unsubscribing from events.")
@@ -325,6 +324,14 @@ class WindowFrame(object):
             self.applyTheme()
 
     def onWorkspaceVisibilityChanged(self):
+        if self.clientWindowID is None:
+            self.logger.warn("onWorkspaceVisibilityChanged: No client window! PANIC!")
+            return
+
+        if self.frameWindowID is None:
+            self.logger.warn("onWorkspaceVisibilityChanged: No frame window! PANIC!")
+            return
+
         if self.workspace.visible:
             # If this window is viewable, map it.
             if self.viewable:

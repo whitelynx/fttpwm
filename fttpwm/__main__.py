@@ -11,8 +11,6 @@ import logging.config
 import os
 import sys
 
-from .wm import WM
-
 
 #XXX: HACK: Horrible monkeypatching to work around broken behavior in python's logging module.
 def getLogger(self, name):
@@ -57,6 +55,22 @@ logging.Manager.getLogger = getLogger
 #XXX: /HACK
 
 
+TRACE = 5
+logging.addLevelName(TRACE, 'TRACE')
+
+
+class Logger(logging.Logger):
+    def trace(self, msg, *args, **kwargs):
+        """Log 'msg % args' with severity 'TRACE'.
+
+        """
+        if self.isEnabledFor(TRACE):
+            self._log(TRACE, msg, args, **kwargs)
+
+
+logging.setLoggerClass(Logger)
+
+
 logConfig = {
         "disable_existing_loggers": False,
         "formatters": {
@@ -86,7 +100,7 @@ logConfig = {
             "colorConsole": {
                 "class": "fttpwm.colorlog.ColoredConsoleHandler",
                 "formatter": "colored",
-                "level": "NOTSET",
+                "level": "DEBUG",
                 "stream": "ext://sys.stdout"
                 },
             "file": {
@@ -116,5 +130,7 @@ logging.config.dictConfig(logConfig)
 
 logger = logging.getLogger("fttpwm")
 
+
+from .wm import WM
 
 WM().run()

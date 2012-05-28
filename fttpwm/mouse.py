@@ -22,7 +22,7 @@ def bindMouse(bindings, context=xpybutil.root):
         buttonString = buttonString.replace('+', '-')
 
         mods, button = mousebind.parse_buttonstring(buttonString)
-        if not mousebind.grab_button(context, mods, button):
+        if not mousebind.grab_button(context, mods, button, propagate=True):  # The term "propagate" is misused here.
             logger.error("Couldn't grab mouse button %r!", buttonString)
             return
 
@@ -52,6 +52,28 @@ class KeyOrButtonAction(object):
     def onRelease(self, event):
         pass
 
+    def continueGrab(self, flush=True):
+        logger.debug("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
+        self.allowEvents(xcb.xproto.Allow.SyncPointer, flush=flush)
+
+    def releaseGrab(self, flush=True):
+        logger.debug("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
+        self.allowEvents(xcb.xproto.Allow.AsyncPointer, flush=flush)
+
+    def releaseGrabAndReplay(self, event, flush=True):
+        logger.debug("KeyOrButtonAction.releaseGrabAndReplay: Releasing grab and replaying pointer event: %r", event)
+        self.allowEvents(xcb.xproto.Allow.ReplayPointer, event, flush)
+
+    def allowEvents(self, allowMode, event=None, flush=True):
+        time = xcb.CurrentTime
+        if event is not None:
+            time = event.time
+
+        if flush:
+            xpybutil.conn.core.AllowEventsChecked(allowMode, time).check()
+        else:
+            xpybutil.conn.core.AllowEvents(allowMode, time)
+
 
 class MouseMoveAction(KeyOrButtonAction):
     def onMotion(self, event):
@@ -79,8 +101,12 @@ class MouseDragAction(MouseMoveAction):
             self.active = True
             self.dragStart = event.root_x, event.root_y
 
+            self.continueGrab()
+
         else:
             self.onFinishDrag(0, 0, event, True)
+
+            self.releaseGrabAndReplay(event)
 
     def onRelease(self, event):
         if self.active:
@@ -95,6 +121,11 @@ class MouseDragAction(MouseMoveAction):
             self.active = False
             self.dragStart = None
 
+            self.releaseGrab()
+
+        else:
+            self.releaseGrabAndReplay(event)
+
     def onMotion(self, event):
         if self.active:
             # See how the pointer has moved relative to the root window.
@@ -104,6 +135,13 @@ class MouseDragAction(MouseMoveAction):
 
             if self.onUpdateDrag(xDiff, yDiff, event) is self.CancelDrag:
                 self.onFinishDrag(xDiff, yDiff, event, True)
+
+                self.releaseGrab()
+
+            self.continueGrab()
+
+        else:
+            self.releaseGrabAndReplay(event)
 
     def onStartDrag(self, event):
         """Override this method in subclasses to do something when a drag starts.
@@ -236,12 +274,14 @@ def _combine(action1, action2):
     return Combined()
 
 
-def _raise(event):
+def _raise(event, flush=True):
     if event.child != xcb.NONE:
         xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
-            ConfigWindow.StackMode: StackMode.Above
-            }))
-        xpybutil.conn.flush()
+                ConfigWindow.StackMode: StackMode.Above
+                }))
+
+        if flush:
+            xpybutil.conn.flush()
 
 
 def _raiseAnd(Action2):
@@ -258,6 +298,8 @@ class _RaiseWindow(KeyOrButtonAction):
 
     """
     def onPress(self, event):
-        _raise(event)
+        _raise(event, flush=False)
+
+        self.releaseGrabAndReplay(event)
 
 raiseWindow = _RaiseWindow()

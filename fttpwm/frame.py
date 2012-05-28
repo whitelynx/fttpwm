@@ -15,11 +15,9 @@ import xpybutil.event
 import xpybutil.ewmh as ewmh
 import xpybutil.icccm as icccm
 from xpybutil.util import get_atom as atom
-import xpybutil.mousebind as mousebind
 
 import cairo
 
-from .bind import FilteredHandler
 from .ewmh import EWMHAction, EWMHWindowState
 from .icccm import ICCCMWindowState
 from .mouse import bindMouse, raiseAndMoveWindow
@@ -189,10 +187,10 @@ class WindowFrame(object):
             xpybutil.event.disconnect('MapNotify', self.frameWindowID)
 
     def activateBindings(self):
-        xcb.xproto.ButtonMask._1
-        bindMouse({
-                '1': raiseAndMoveWindow,
-                })
+        pass
+        #bindMouse({
+        #        #'1': raiseAndMoveWindow,
+        #        }, context=self.frameWindowID)
 
     ## Commands ####
     def hide(self):

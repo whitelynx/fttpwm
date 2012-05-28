@@ -46,6 +46,19 @@ def convertAttributes(attributes):
     return attribMask, attribValues
 
 
+def findCurrentVisual(screen, desiredDepth, visualID):
+    """Find the VISUALTYPE object for our current visual.
+
+    This is needed for initializing a Cairo XCBSurface.
+
+    """
+    for depth in screen.allowed_depths:
+        if depth.depth == desiredDepth:
+            for visual in depth.visuals:
+                if visual.visual_id == visualID:
+                    return visual
+
+
 def quit(*event):
     logger.debug("Exiting.")
     sys.exit(0)

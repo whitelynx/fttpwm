@@ -22,7 +22,7 @@ import xpybutil.window
 
 from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
-from .utils import convertAttributes
+from .utils import convertAttributes, findCurrentVisual
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
 from .signaled import SignaledDict
@@ -69,7 +69,7 @@ class WM(object):
         self.root = self.screen.root
         self.depth = self.screen.root_depth
         self.visualID = self.screen.root_visual
-        self.visual = self.findCurrentVisual()
+        self.visual = findCurrentVisual(self.screen, self.depth, self.visualID)
         self.screenWidth = self.screen.width_in_pixels
         self.screenHeight = self.screen.height_in_pixels
         self.colormap = self.screen.default_colormap
@@ -148,18 +148,6 @@ class WM(object):
             struts.update(wmStrut)
 
             return struts
-
-    def findCurrentVisual(self):
-        """Find the VISUALTYPE object for our current visual.
-
-        This is needed for initializing a Cairo XCBSurface.
-
-        """
-        for depth in self.screen.allowed_depths:
-            if depth.depth == self.depth:
-                for visual in depth.visuals:
-                    if visual.visual_id == self.visualID:
-                        return visual
 
     def allocColor(self, color):
         """Allocate the given color and return its XID.

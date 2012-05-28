@@ -284,6 +284,10 @@ class Workspace(object):
         #TODO: Rearrange any local (workspace-specific) dock windows as needed!
         pass
 
+    def setLayout(self, layout):
+        self.layout = layout
+        self.arrangeWindows()
+
     def arrangeWindows(self):
         if not self.hasViewableFrames:
             return

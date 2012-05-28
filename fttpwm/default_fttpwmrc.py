@@ -2,12 +2,13 @@ from os import chdir
 from os.path import expanduser
 
 from fttpwm.keyboard import bindKeys
+from fttpwm.layout import Floating, Rows, Columns
 from fttpwm.mouse import bindMouse
 from fttpwm.setroot import setWallpaper
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
 from fttpwm.bindings.app import startSingle, startParallel
-from fttpwm.bindings.layout import Floating
+from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout
 from fttpwm.bindings.wm import quit, switchWorkspace
 
 
@@ -28,12 +29,15 @@ bindKeys({
         META + '0': switchWorkspace(9),
         META + 'bracketleft': switchWorkspace(10),
         META + 'bracketright': switchWorkspace(11),
+        META + 'F': setLayout(Floating()),
+        META + 'R': setLayout(Rows()),
+        META + 'C': setLayout(Columns()),
         })
 
 bindMouse({
-        '1': Floating.raiseWindow,
-        META + '1': Floating.raiseAndMoveWindow,
-        META + '3': Floating.raiseAndResizeWindow,
+        '1': FloatingBindings.raiseWindow,
+        META + '1': FloatingBindings.raiseAndMoveWindow,
+        META + '3': FloatingBindings.raiseAndResizeWindow,
         })
 
 theme = Default()

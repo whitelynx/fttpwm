@@ -4,6 +4,8 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+import logging
+
 import xcb
 from xcb.xproto import ConfigWindow, StackMode
 
@@ -12,6 +14,9 @@ import xpybutil
 from ..mouse import combine, KeyOrButtonAction, MouseDragAction, WindowDragAction
 from ..utils import convertAttributes, signedToUnsigned16
 from .. import layout, wm
+
+
+logger = logging.getLogger("fttpwm.bindings.layout")
 
 
 ## Window Action Implementations for Floating Layouts ####
@@ -24,7 +29,7 @@ def _onlyFloating(action):
     if issubclass(ActionClass, MouseDragAction):
         class OnlyFloating(ActionClass):
             def onStartDrag(self, event):
-                if not isinstance(wm.WM.instance.workspaces.currentWorkspace, layout.Floating):
+                if not isinstance(wm.WM.instance.workspaces.currentWorkspace.layout, layout.Floating):
                     return self.CancelDrag
 
                 super(OnlyFloating, self).onStartDrag(event)
@@ -34,7 +39,7 @@ def _onlyFloating(action):
 
         class OnlyFloating(ActionClass):
             def onPress(self, event):
-                if not isinstance(wm.WM.instance.workspaces.currentWorkspace, layout.Floating):
+                if not isinstance(wm.WM.instance.workspaces.currentWorkspace.layout, layout.Floating):
                     self.releaseGrabAndReplay(event)
                     return
 
@@ -109,3 +114,14 @@ class Floating(object):
     raiseAndResizeWindow = _onlyFloating(_raiseAnd(_ResizeWindow))
 
     raiseWindow = _onlyFloating(_RaiseWindow())
+
+
+def setLayout(layoutInstance):
+    assert isinstance(layoutInstance, layout.BaseLayout)
+
+    def setLayout_(*event):
+        ws = wm.WM.instance.workspaces.currentWorkspace
+        logger.debug("Setting workspace %r to layout %r.", ws, layoutInstance)
+        ws.setLayout(layoutInstance)
+
+    return setLayout_

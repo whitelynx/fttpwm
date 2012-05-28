@@ -8,8 +8,8 @@ import sys
 logger = logging.getLogger("fttpwm.utils")
 
 
-def startApp(*command, **kwargs):
-    """Starts the given command, returning the new process's PID.
+def run(*command, **kwargs):
+    """Run the given command, returning the new process's PID.
 
     Additional options may be passed to the Popen constructor through `kwargs`.
 
@@ -17,9 +17,18 @@ def startApp(*command, **kwargs):
     if len(command) == 1 and isinstance(command[0], basestring):
         command = shlex.split(command[0])
 
+    logger.debug("Starting application: %r", command)
+    return subprocess.Popen(command, close_fds=True, **kwargs).pid
+
+
+def startApp(*command, **kwargs):
+    """Starts the given command using 'run' in response to a key or button press event.
+
+    Additional options may be passed to the Popen constructor through `kwargs`.
+
+    """
     def startApp_(*event):
-        logger.debug("Starting application: %r", command)
-        subprocess.Popen(command, close_fds=True, **kwargs).pid
+        run(*command, **kwargs)
 
     return startApp_
 

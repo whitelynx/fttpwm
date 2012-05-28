@@ -3,10 +3,11 @@ from os.path import expanduser
 
 from fttpwm.keyboard import bindKeys
 from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
-from fttpwm.utils import run, startApp, quit
-from fttpwm.wm import WMBindings as WM
+from fttpwm.setroot import setWallpaper
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
+from fttpwm.utils import run, startApp, quit
+from fttpwm.wm import WMBindings as WM
 
 
 META = 'Mod4+'
@@ -44,6 +45,7 @@ fonts.options.set(
         )
 
 # Startup
+setWallpaper()
 chdir(expanduser("~"))
 map(run, '''
 xrdb .Xresources

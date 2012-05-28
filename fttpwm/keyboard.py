@@ -6,7 +6,7 @@ import xcb
 import xpybutil
 import xpybutil.keybind as keybind
 
-from .bind import processBinding
+from .bindings import processBinding
 from .settings import settings
 
 

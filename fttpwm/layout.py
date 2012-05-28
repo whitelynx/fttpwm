@@ -30,8 +30,6 @@ class Floating(BaseLayout):
     """
     logger = logging.getLogger("fttpwm.layouts.Columns")
 
-    #TODO: Move mouse-based move and resize here!
-
     def arrange(self, ws):
         pass
 

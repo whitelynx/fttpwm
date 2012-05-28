@@ -20,7 +20,8 @@ import cairo
 
 from .ewmh import EWMHAction, EWMHWindowState
 from .icccm import ICCCMWindowState
-from .mouse import bindMouse, raiseAndMoveWindow
+from .mouse import bindMouse
+from .layout import Floating
 from .settings import settings
 from .themes import Default, fonts
 from .utils import convertAttributes
@@ -189,7 +190,7 @@ class WindowFrame(object):
     def activateBindings(self):
         pass
         #bindMouse({
-        #        #'1': raiseAndMoveWindow,
+        #        #'1': Floating.raiseAndMoveWindow,
         #        }, context=self.frameWindowID)
 
     ## Commands ####

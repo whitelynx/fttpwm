@@ -1,10 +1,10 @@
 from argparse import Namespace
 import logging
 
-from .settings import settings
+from ..settings import settings
 
 
-logger = logging.getLogger("fttpwm.bind")
+logger = logging.getLogger("fttpwm.bindings")
 
 
 def processBinding(binding):

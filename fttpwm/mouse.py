@@ -1,14 +1,13 @@
 import logging
 
 import xcb
-from xcb.xproto import ButtonMask, ConfigWindow, StackMode
+from xcb.xproto import Allow, ButtonMask
 
 import xpybutil
 import xpybutil.event as event
 import xpybutil.mousebind as mousebind
 
-from .bind import processBinding, FilteredHandler
-from .utils import convertAttributes, signedToUnsigned16
+from .bindings import processBinding, FilteredHandler
 
 
 logger = logging.getLogger("fttpwm.mouse")
@@ -16,6 +15,8 @@ logger = logging.getLogger("fttpwm.mouse")
 captureCallbacks = []
 
 
+#FIXME: Refactor this so that sets of bindings can be activated and deactivated easily at runtime, and so they can be
+# tied to certain layouts!
 def bindMouse(bindings, context=xpybutil.root):
     for buttonString, binding in bindings.iteritems():
         binding = processBinding(binding)
@@ -54,15 +55,15 @@ class KeyOrButtonAction(object):
 
     def continueGrab(self, flush=True):
         logger.trace("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
-        self.allowEvents(xcb.xproto.Allow.SyncPointer, flush=flush)
+        self.allowEvents(Allow.SyncPointer, flush=flush)
 
     def releaseGrab(self, flush=True):
         logger.trace("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
-        self.allowEvents(xcb.xproto.Allow.AsyncPointer, flush=flush)
+        self.allowEvents(Allow.AsyncPointer, flush=flush)
 
     def releaseGrabAndReplay(self, event, flush=True):
         logger.trace("KeyOrButtonAction.releaseGrabAndReplay: Releasing grab and replaying pointer event: %r", event)
-        self.allowEvents(xcb.xproto.Allow.ReplayPointer, event, flush)
+        self.allowEvents(Allow.ReplayPointer, event, flush)
 
     def allowEvents(self, allowMode, event=None, flush=True):
         time = xcb.CurrentTime
@@ -217,39 +218,7 @@ class WindowDragAction(MouseDragAction):
         self._initialGeometry = None
 
 
-class _MoveWindow(WindowDragAction):
-    """Move the focused window with the mouse.
-
-    """
-    def onUpdateDrag(self, xDiff, yDiff, event):
-        x = self.initialGeometry.x + xDiff
-        y = self.initialGeometry.y + yDiff
-        xpybutil.conn.core.ConfigureWindow(self.window, *convertAttributes({
-                ConfigWindow.X: signedToUnsigned16(x),
-                ConfigWindow.Y: signedToUnsigned16(y)
-                }))
-        xpybutil.conn.flush()
-
-#FIXME: Should we be using the classes as factories instead of singletons? Is there different state we need to store in
-# each binding?
-moveWindow = _MoveWindow()
-
-
-class _ResizeWindow(WindowDragAction):
-    """Resize the focused window with the mouse.
-
-    """
-    def onUpdateDrag(self, xDiff, yDiff, event):
-        xpybutil.conn.core.ConfigureWindow(self.window, *convertAttributes({
-                ConfigWindow.Width: max(1, self.initialGeometry.width + xDiff),
-                ConfigWindow.Height: max(1, self.initialGeometry.height + yDiff)
-                }))
-        xpybutil.conn.flush()
-
-resizeWindow = _ResizeWindow()
-
-
-def _combine(action1, action2):
+def combine(action1, action2):
     if isinstance(action2, type):
         Action2Class = action2
     else:
@@ -273,34 +242,3 @@ def _combine(action1, action2):
 
     Combined.__name__ = '{}_and_{}'.format(action1.__name__.strip('_'), Action2Class.__name__.strip('_'))
     return Combined()
-
-
-def _raise(event, flush=True):
-    if event.child != xcb.NONE:
-        xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
-                ConfigWindow.StackMode: StackMode.Above
-                }))
-
-        if flush:
-            xpybutil.conn.flush()
-
-
-def _raiseAnd(Action2):
-    return _combine(_raise, Action2)
-
-
-raiseAndMoveWindow = _raiseAnd(_MoveWindow)
-
-raiseAndResizeWindow = _raiseAnd(_ResizeWindow)
-
-
-class _RaiseWindow(KeyOrButtonAction):
-    """Raise the selected window.
-
-    """
-    def onPress(self, event):
-        self.releaseGrabAndReplay(event, flush=False)
-
-        _raise(event)
-
-raiseWindow = _RaiseWindow()

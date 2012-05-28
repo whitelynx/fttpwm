@@ -1,36 +1,8 @@
 import logging
-import shlex
 import struct
-import subprocess
-import sys
 
 
 logger = logging.getLogger("fttpwm.utils")
-
-
-def run(*command, **kwargs):
-    """Run the given command, returning the new process's PID.
-
-    Additional options may be passed to the Popen constructor through `kwargs`.
-
-    """
-    if len(command) == 1 and isinstance(command[0], basestring):
-        command = shlex.split(command[0])
-
-    logger.debug("Starting application: %r", command)
-    return subprocess.Popen(command, close_fds=True, **kwargs).pid
-
-
-def startApp(*command, **kwargs):
-    """Starts the given command using 'run' in response to a key or button press event.
-
-    Additional options may be passed to the Popen constructor through `kwargs`.
-
-    """
-    def startApp_(*event):
-        run(*command, **kwargs)
-
-    return startApp_
 
 
 def convertAttributes(attributes):
@@ -57,11 +29,6 @@ def findCurrentVisual(screen, desiredDepth, visualID):
             for visual in depth.visuals:
                 if visual.visual_id == visualID:
                     return visual
-
-
-def quit(*event):
-    logger.debug("Exiting.")
-    sys.exit(0)
 
 
 def signedToUnsigned16(signed):

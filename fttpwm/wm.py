@@ -32,6 +32,7 @@ from .workspace import WorkspaceManager
 logger = logging.getLogger("fttpwm.wm")
 
 settings.setDefaults(
+        autostart=[]
         )
 
 
@@ -39,19 +40,6 @@ class Color(object):
     @staticmethod
     def float(*components):
         return map(lambda x: int(x * 2 ** 16), components)
-
-
-class WMBindings(object):
-    @staticmethod
-    def switchWorkspace(ws):
-        """Switches to the given workspace.
-
-        """
-        def switchWorkspace_(*event):
-            logger.debug("Switching to workspace %r", ws)
-            WM.instance.workspaces.switchTo(ws)
-
-        return switchWorkspace_
 
 
 class WM(object):
@@ -102,6 +90,11 @@ class WM(object):
         self.checkForOtherWMs()
         self.startManaging()
         settings.loadSettings()
+
+        logger.info("Running autostart commands...")
+        for startAction in settings.autostart:
+            startAction()
+        logger.info("Finished running autostart commands.")
 
     @property
     def strutsLeftSize(self):

@@ -1,6 +1,9 @@
+from os import chdir
+from os.path import expanduser
+
 from fttpwm.keyboard import bindKeys
 from fttpwm.mouse import bindMouse, raiseWindow, raiseAndMoveWindow, raiseAndResizeWindow
-from fttpwm.utils import startApp, quit
+from fttpwm.utils import run, startApp, quit
 from fttpwm.wm import WMBindings as WM
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
@@ -39,3 +42,9 @@ fonts.options.set(
         hintStyle=fonts.hintStyle.slight,
         subpixelOrder=fonts.subpixelOrder.default,
         )
+
+# Startup
+chdir(expanduser("~"))
+map(run, '''
+xrdb .Xresources
+'''.strip().split('\n'))

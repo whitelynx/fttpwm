@@ -80,6 +80,21 @@ class WM(object):
         self.windows = SignaledDict()
         self.windows.updated.connect(self.updateWindowList)
 
+        # Start with no global (non-workspace-specific / "pinned") struts.
+        #TODO: Take Xinerama/XRandR dead spaces into account!
+        #TODO: Detect windows with _NET_WM_STRUT or _NET_WM_STRUT_PARTIAL set!
+        self.strutsLeft = SignaledDict()
+        self.strutsRight = SignaledDict()
+        self.strutsTop = SignaledDict()
+        self.strutsBottom = SignaledDict()
+
+        self.struts = {
+                'left': self.strutsLeft,
+                'right': self.strutsRight,
+                'top': self.strutsTop,
+                'bottom': self.strutsBottom
+                }
+
         self.workspaces = WorkspaceManager(self)
 
         self.focusedWindow = None
@@ -87,6 +102,52 @@ class WM(object):
         self.checkForOtherWMs()
         self.startManaging()
         settings.loadSettings()
+
+    @property
+    def strutsLeftSize(self):
+        return sum(self.strutsLeft.values())
+
+    @property
+    def strutsRightSize(self):
+        return sum(self.strutsRight.values())
+
+    @property
+    def strutsTopSize(self):
+        return sum(self.strutsTop.values())
+
+    @property
+    def strutsBottomSize(self):
+        return sum(self.strutsBottom.values())
+
+    def getWindowStruts(self, windowID):
+        wmPartialStrutCookie = ewmh.get_wm_strut_partial(windowID)
+        wmStrutCookie = ewmh.get_wm_strut(windowID)
+
+        wmPartialStrut = wmPartialStrutCookie.reply()
+        wmStrut = wmStrutCookie.reply()
+
+        if wmPartialStrut is not None:
+            return wmPartialStrut
+
+        elif wmStrut is not None:
+            struts = {
+                    'left': 0,
+                    'right': 0,
+                    'top': 0,
+                    'bottom': 0,
+                    'left_start_y': 0,
+                    'left_end_y': 0,
+                    'right_start_y': 0,
+                    'right_end_y': 0,
+                    'top_start_x': 0,
+                    'top_end_x': 0,
+                    'bottom_start_x': 0,
+                    'bottom_end_x': 0
+                    }
+
+            struts.update(wmStrut)
+
+            return struts
 
     def findCurrentVisual(self):
         """Find the VISUALTYPE object for our current visual.
@@ -141,8 +202,6 @@ class WM(object):
 
         xpybutil.window.listen(xpybutil.root, 'PropertyChange',
                 'SubstructureRedirect', 'SubstructureNotify', 'StructureNotify')
-                # It might make sense to do this, but if we update our frames when we set the focus, it'll be faster.
-                #'EventMask.FocusChange')
 
     def setWMChildProps(self):
         logger.debug(
@@ -218,7 +277,7 @@ class WM(object):
                 atom('_NET_WM_PID'), atom('WM_CLIENT_MACHINE'),  # Support for killing hung processes
                 atom('_NET_FRAME_EXTENTS'),
                 #atom('_NET_WM_VISIBLE_NAME'), atom('_NET_WM_VISIBLE_ICON_NAME'),  # TODO: Elide titles, and set these!
-                #atom('_NET_WM_STRUT'), atom('_NET_WM_STRUT_PARTIAL'),  # TODO: Support these, adjusting work area!
+                atom('_NET_WM_STRUT'), atom('_NET_WM_STRUT_PARTIAL'),
                 #atom('_NET_WM_ICON_GEOMETRY'), atom('_NET_WM_ICON'),
                 #atom('_NET_WM_USER_TIME'),  # TODO: Support for user activity tracking and startup notification
                 #   set by pagers, etc.
@@ -358,8 +417,22 @@ class WM(object):
         clientWindow = event.window
         logger.debug("onMapRequest: %r", clientWindow)
 
-        # If we don't already have a frame for this client, create one.
-        if clientWindow not in self.windows:
+        struts = self.getWindowStruts(clientWindow)
+        logger.debug("Struts: %r", struts)
+        if struts is not None:
+            for side in 'left right top bottom'.split():
+                if struts[side] > 0:
+                    logger.debug("onMapRequest: Found strut on %s side: %s", side, struts[side])
+                    self.struts[side][clientWindow] = struts[side]
+
+            # Listen for UnmapNotify events so we can ditch the struts when the window unmaps.
+            xpybutil.window.listen(clientWindow, 'StructureNotify')
+            xpybutil.event.connect('UnmapNotify', clientWindow, self.onUnmapNotify)
+
+            logger.debug("onMapRequest: Found struts on window; skipping window management.")
+
+        elif clientWindow not in self.windows:
+            # If we don't already have a frame for this client, create one.
             self.manageWindow(clientWindow)
 
         try:
@@ -367,6 +440,14 @@ class WM(object):
         except:
             logger.exception("onMapRequest: Error mapping window %r! Not adding to visible window list.", clientWindow)
             return
+
+    def onUnmapNotify(self, event):
+        clientWindow = event.window
+        #logger.debug("onUnmapNotify: %r", clientWindow)  # This is REALLY noisy.
+
+        for side in 'left right top bottom'.split():
+            if clientWindow in self.struts[side]:
+                del self.struts[side][clientWindow]
 
     ## Main event loop ####
     def run(self):

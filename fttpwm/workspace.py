@@ -64,15 +64,14 @@ class WorkspaceManager(object):
         self.workspaces = SignaledList()
         self.workspacesByName = SignaledDict()
 
-        # Start with no global (non-workspace-specific / "pinned") struts.
-        self.globalStrutsLeft, self.globalStrutsRight = 0, 0
-        self.globalStrutsTop, self.globalStrutsBottom = 0, 0
-        #TODO: Take Xinerama/XRandR dead spaces into account!
-        #TODO: Detect windows with _NET_WM_STRUT or _NET_WM_STRUT_PARTIAL set!
-
         self.baseWorkAreaUpdated = Signal()
         self.baseWorkAreaUpdated.connect(self.updateWorkAreaHint)
         self.baseWorkAreaUpdated.connect(self.arrangeGlobalDocks)
+
+        wm.strutsLeft.updated.connect(self.baseWorkAreaUpdated)
+        wm.strutsRight.updated.connect(self.baseWorkAreaUpdated)
+        wm.strutsTop.updated.connect(self.baseWorkAreaUpdated)
+        wm.strutsBottom.updated.connect(self.baseWorkAreaUpdated)
 
         self.createConfiguredWorkspaces()
         self.setEWMHProps()
@@ -136,19 +135,19 @@ class WorkspaceManager(object):
 
     @property
     def globalWorkAreaX(self):
-        return self.globalStrutsLeft
+        return self.wm.strutsLeftSize
 
     @property
     def globalWorkAreaY(self):
-        return self.globalStrutsTop
+        return self.wm.strutsTopSize
 
     @property
     def globalWorkAreaWidth(self):
-        return self.wm.screenWidth - self.globalStrutsLeft - self.globalStrutsRight
+        return self.wm.screenWidth - self.wm.strutsLeftSize - self.wm.strutsRightSize
 
     @property
     def globalWorkAreaHeight(self):
-        return self.wm.screenHeight - self.globalStrutsTop - self.globalStrutsBottom
+        return self.wm.screenHeight - self.wm.strutsTopSize - self.wm.strutsBottomSize
 
     def arrangeGlobalDocks(self):
         #TODO: Rearrange any global (non-workspace-specific / "pinned") dock windows as needed!

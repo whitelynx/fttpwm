@@ -53,15 +53,15 @@ class KeyOrButtonAction(object):
         pass
 
     def continueGrab(self, flush=True):
-        logger.debug("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
+        logger.trace("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
         self.allowEvents(xcb.xproto.Allow.SyncPointer, flush=flush)
 
     def releaseGrab(self, flush=True):
-        logger.debug("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
+        logger.trace("KeyOrButtonAction.releaseGrab: Releasing synchronous pointer grab.")
         self.allowEvents(xcb.xproto.Allow.AsyncPointer, flush=flush)
 
     def releaseGrabAndReplay(self, event, flush=True):
-        logger.debug("KeyOrButtonAction.releaseGrabAndReplay: Releasing grab and replaying pointer event: %r", event)
+        logger.trace("KeyOrButtonAction.releaseGrabAndReplay: Releasing grab and replaying pointer event: %r", event)
         self.allowEvents(xcb.xproto.Allow.ReplayPointer, event, flush)
 
     def allowEvents(self, allowMode, event=None, flush=True):
@@ -96,20 +96,22 @@ class MouseDragAction(MouseMoveAction):
 
     def onPress(self, event):
         if self.onStartDrag(event) is not self.CancelDrag:
+            self.continueGrab()
+
             logger.debug("%s: Drag started.", self.__class__.__name__)
 
             self.active = True
             self.dragStart = event.root_x, event.root_y
 
-            self.continueGrab()
-
         else:
-            self.onFinishDrag(0, 0, event, True)
-
             self.releaseGrabAndReplay(event)
+
+            self.onFinishDrag(0, 0, event, True)
 
     def onRelease(self, event):
         if self.active:
+            self.releaseGrab()
+
             # See how the pointer has moved relative to the root window.
             startX, startY = self.dragStart
             xDiff = event.root_x - startX
@@ -120,8 +122,6 @@ class MouseDragAction(MouseMoveAction):
 
             self.active = False
             self.dragStart = None
-
-            self.releaseGrab()
 
         else:
             self.releaseGrabAndReplay(event)
@@ -134,11 +134,12 @@ class MouseDragAction(MouseMoveAction):
             yDiff = event.root_y - startY
 
             if self.onUpdateDrag(xDiff, yDiff, event) is self.CancelDrag:
-                self.onFinishDrag(xDiff, yDiff, event, True)
-
                 self.releaseGrab()
 
-            self.continueGrab()
+                self.onFinishDrag(xDiff, yDiff, event, True)
+
+            else:
+                self.continueGrab()
 
         else:
             self.releaseGrabAndReplay(event)
@@ -298,8 +299,8 @@ class _RaiseWindow(KeyOrButtonAction):
 
     """
     def onPress(self, event):
-        _raise(event, flush=False)
+        self.releaseGrabAndReplay(event, flush=False)
 
-        self.releaseGrabAndReplay(event)
+        _raise(event)
 
 raiseWindow = _RaiseWindow()

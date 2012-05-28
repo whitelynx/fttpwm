@@ -8,7 +8,7 @@ from argparse import Namespace
 import logging
 
 import xcb
-from xcb.xproto import CW, ConfigWindow, StackMode
+from xcb.xproto import CW, ConfigWindow, StackMode, ConfigureNotifyEvent
 
 import xpybutil
 import xpybutil.event
@@ -228,9 +228,16 @@ class WindowFrame(object):
 
     ## X events ####
     def onConfigureNotify(self, event):
+        # If there's any other ConfigureNotify events for this window in the queue, ignore this one.
+        xpybutil.event.read(block=False)
+        for ev in xpybutil.event.peek():
+            if isinstance(ev, ConfigureNotifyEvent) and ev.window == self.frameWindowID:
+                return
+
         if (self.width, self.height) != (event.width, event.height):
+            self.logger.trace("onConfigureNotify: Window size changed to %r.", (event.width, event.height))
+
             # Window size changed; resize surface and redraw.
-            self.logger.debug("onConfigureNotify: Window size changed to %r.", (event.width, event.height))
             self.surface.set_size(event.width, event.height)
             self.width, self.height = event.width, event.height
             attributes = convertAttributes({
@@ -241,7 +248,8 @@ class WindowFrame(object):
             self.paint()
 
     def onEnterNotify(self, event):
-        self.logger.debug("onEnterNotify: %r", event.__dict__)
+        self.logger.trace("onEnterNotify: %r", event.__dict__)
+
         if not self.focused:
             self.wm.focusWindow(self)
 

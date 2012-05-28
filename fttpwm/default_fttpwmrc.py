@@ -47,6 +47,16 @@ fonts.options.set(
 # Startup
 setWallpaper()
 chdir(expanduser("~"))
-map(run, '''
+map(run, (l.strip() for l in '''
 xrdb .Xresources
-'''.strip().split('\n'))
+
+# cairo-compmgr; pretty much just transparency iirc
+#cairo-compmgr
+
+# xcompmgr with soft shadows
+#xcompmgr -r 8 -l 5 -t 5 -o .7 -C -c
+
+# xcompmgr with no shadows
+xcompmgr -n
+'''.strip().split('\n')
+    if len(l.split('#', 1)[0]) > 0))

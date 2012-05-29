@@ -214,10 +214,11 @@ class WM(object):
         logger.debug("startManaging: Subscribing to events.")
 
         xpybutil.event.connect('MapRequest', self.root, self.onMapRequest)
+        xpybutil.event.connect('MapNotify', self.root, self.onMapNotify)
 
         logger.debug("startManaging: Reticulating splines.")
 
-        xpybutil.window.listen(xpybutil.root, 'PropertyChange',
+        xpybutil.window.listen(self.root, 'PropertyChange',
                 'SubstructureRedirect', 'SubstructureNotify', 'StructureNotify')
 
     def setWMChildProps(self):
@@ -435,17 +436,7 @@ class WM(object):
         logger.debug("onMapRequest: %r", clientWindow)
 
         struts = self.getWindowStruts(clientWindow)
-        logger.debug("Struts: %r", struts)
         if struts is not None:
-            for side in 'left right top bottom'.split():
-                if struts[side] > 0:
-                    logger.debug("onMapRequest: Found strut on %s side: %s", side, struts[side])
-                    self.struts[side][clientWindow] = struts[side]
-
-            # Listen for UnmapNotify events so we can ditch the struts when the window unmaps.
-            xpybutil.window.listen(clientWindow, 'StructureNotify')
-            xpybutil.event.connect('UnmapNotify', clientWindow, self.onUnmapNotify)
-
             logger.debug("onMapRequest: Found struts on window; skipping window management.")
 
         elif clientWindow not in self.windows:
@@ -457,6 +448,22 @@ class WM(object):
         except:
             logger.exception("onMapRequest: Error mapping window %r! Not adding to visible window list.", clientWindow)
             return
+
+    def onMapNotify(self, event):
+        clientWindow = event.window
+        logger.debug("onMapNotify: %r", clientWindow)
+
+        struts = self.getWindowStruts(clientWindow)
+        logger.debug("Struts: %r", struts)
+        if struts is not None:
+            for side in 'left right top bottom'.split():
+                if struts[side] > 0:
+                    logger.debug("onMapNotify: Found strut on %s side: %s", side, struts[side])
+                    self.struts[side][clientWindow] = struts[side]
+
+            # Listen for UnmapNotify events so we can ditch the struts when the window unmaps.
+            xpybutil.window.listen(clientWindow, 'StructureNotify')
+            xpybutil.event.connect('UnmapNotify', clientWindow, self.onUnmapNotify)
 
     def onUnmapNotify(self, event):
         clientWindow = event.window

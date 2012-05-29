@@ -14,21 +14,29 @@ logger = logging.getLogger("fttpwm.themes")
 
 class Color(object):
     stringFormats = [
-            (lambda x: float(int(x, 16)) / 0xF, re.compile(r'#(?P<r>\d)(?P<g>\d)(?P<b>\d)(?P<a>\d)?$')),
-            (lambda x: float(int(x, 16)) / 0xFF, re.compile(r'#(?P<r>\d{2})(?P<g>\d{2})(?P<b>\d{2})(?P<a>\d{2})?$')),
-            (lambda x: float(int(x, 16)) / 0xFFFF, re.compile(r'#(?P<r>\d{4})(?P<g>\d{4})(?P<b>\d{4})(?P<a>\d{4})?$')),
+            (lambda x: float(int(x, 16)) / 0xF,
+                re.compile(r'#(?P<r>[0-9a-fA-F])(?P<g>[0-9a-fA-F])(?P<b>[0-9a-fA-F])(?P<a>[0-9a-fA-F])?$')),
+            (lambda x: float(int(x, 16)) / 0xFF,
+                re.compile(r'#(?P<r>[0-9a-fA-F]{2})(?P<g>[0-9a-fA-F]{2})(?P<b>[0-9a-fA-F]{2})(?P<a>[0-9a-fA-F]{2})?$')),
+            (lambda x: float(int(x, 16)) / 0xFFFF,
+                re.compile(r'#(?P<r>[0-9a-fA-F]{4})(?P<g>[0-9a-fA-F]{4})(?P<b>[0-9a-fA-F]{4})(?P<a>[0-9a-fA-F]{4})?$')),
             ]
 
     def __init__(self, string=None):
         self.r, self.g, self.b, self.a = 0, 0, 0, 1
 
+        matched = False
         if string:
             for conv, fmt in self.stringFormats:
                 match = fmt.match(string)
                 if match:
+                    matched = True
                     self.r, self.g, self.b = map(conv, match.group('r', 'g', 'b'))
                     if match.group('a') is not None:
                         self.a = conv(match.group('a'))
+
+        if not matched:
+            logger.warn("Color: Couldn't parse color definition %r! Defaulting to opaque black.", string)
 
     def __iter__(self):
         return iter((self.r, self.g, self.b, self.a))
@@ -123,14 +131,14 @@ class Default(BaseTheme):
             opacity=1,
             )
     statusBar = dict(
-            height=16,
+            height=15,
             borderWidth=1,
-            textColor=Color.rgb(0, 0, 0),
+            textColor=Color.rgba(1, 1, 1, .75),
             fontFace="lime",
             fontSize=5,
             fontSlant=fonts.slant.normal,
             fontWeight=fonts.weight.normal,
-            background=linearGradient(Direction.vertical, Color.rgb(1, .9, 0), Color.rgb(1, .3, 0)),
+            background=linearGradient(Direction.vertical, Color('#362b00'), Color('#7c3100')),
             opacity=1,
             )
 

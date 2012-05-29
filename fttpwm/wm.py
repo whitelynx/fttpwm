@@ -11,6 +11,7 @@ import operator
 import os
 import struct
 import sys
+import time
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
@@ -478,8 +479,14 @@ class WM(object):
         # direct copy of xpybutil.event.main with some minor changes.
         try:
             while True:
-                xpybutil.event.read(block=True)
+                #FIXME: Find a better way to do timeouts than polling and sleeping! It'd be preferable to block, if we
+                # could set a timeout on the blocking call.
+                #xpybutil.event.read(block=True)
+                xpybutil.event.read(block=False)
+
+                events = 0
                 for e in xpybutil.event.queue():
+                    events += 1
                     w = None
                     if isinstance(e, MappingNotifyEvent):
                         w = None
@@ -503,6 +510,10 @@ class WM(object):
                                     cb, e.__class__, w)
 
                 map(operator.methodcaller('check'), self.timers)
+
+                #XXX: HACK: Sleep 10ms, so we can check for wakeups at least that often.
+                if events == 0:
+                    time.sleep(0.01)
 
         except xcb.Exception:
             logger.exception("Error in main event loop! Exiting with error status.")

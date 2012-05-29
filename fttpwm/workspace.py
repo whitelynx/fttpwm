@@ -63,6 +63,7 @@ class WorkspaceManager(object):
         self.wm = wm
         self.workspaces = SignaledList()
         self.workspacesByName = SignaledDict()
+        self.currentChanged = Signal()
 
         self.baseWorkAreaUpdated = Signal()
         self.baseWorkAreaUpdated.connect(self.updateWorkAreaHint)
@@ -76,8 +77,8 @@ class WorkspaceManager(object):
         self.createConfiguredWorkspaces()
         self.setEWMHProps()
 
-        self.currentWorkspaceNum = min(settings.initialWorkspace, len(self.workspaces) - 1)
-        self.currentWorkspace.show()
+        self.currentIndex = min(settings.initialWorkspace, len(self.workspaces) - 1)
+        self.current.show()
 
     def createConfiguredWorkspaces(self):
         del self.workspaces[:]
@@ -103,7 +104,7 @@ class WorkspaceManager(object):
         # workspace. The workspace will then set _NET_WM_DESKTOP to its index.
         workspaceNum = ewmh.get_wm_desktop(frame.clientWindowID)
         if workspaceNum is None or workspaceNum >= len(self.workspaces):
-            workspaceNum = self.currentWorkspaceNum
+            workspaceNum = self.currentIndex
 
         self.workspaces[workspaceNum].addWindow(frame)
 
@@ -154,21 +155,38 @@ class WorkspaceManager(object):
         pass
 
     @property
-    def currentWorkspaceNum(self):
+    def currentIndex(self):
         return self._currentWorkspaceNum
 
-    @currentWorkspaceNum.setter
-    def currentWorkspaceNum(self, value):
+    @currentIndex.setter
+    def currentIndex(self, value):
         self._currentWorkspaceNum = value
         ewmh.set_current_desktop(value)
+        self.currentChanged()
 
     @property
-    def currentWorkspace(self):
-        return self.workspaces[self.currentWorkspaceNum]
+    def current(self):
+        return self.workspaces[self.currentIndex]
 
-    @currentWorkspace.setter
-    def currentWorkspace(self, workspace):
-        self.currentWorkspaceNum = workspace.index
+    @current.setter
+    def current(self, workspace):
+        self.currentIndex = workspace.index
+
+    @property
+    def beforeCurrent(self):
+        return self.workspaces[:self.currentIndex]
+
+    @property
+    def afterCurrent(self):
+        return self.workspaces[self.currentIndex + 1:]
+
+    @property
+    def namesBeforeCurrent(self):
+        return '  '.join(ws.name for ws in self.beforeCurrent)
+
+    @property
+    def namesAfterCurrent(self):
+        return '  '.join(ws.name for ws in self.afterCurrent)
 
     def switchTo(self, workspace):
         if isinstance(workspace, basestring):
@@ -176,10 +194,10 @@ class WorkspaceManager(object):
         else:
             workspace = self.workspaces[workspace]
 
-        self.currentWorkspace.hide()
+        self.current.hide()
 
         workspace.show()
-        self.currentWorkspace = workspace
+        self.current = workspace
 
 
 class Workspace(object):
@@ -299,12 +317,14 @@ class Workspace(object):
         ewmh.set_current_desktop(self.index)
 
         # Frames will show themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
+        #TODO: Change this!
         self.visible = True
 
     def hide(self):
         self.logger.debug("hide: Hiding.")
 
         # Frames will hide themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
+        #TODO: Change this!
         self.visible = False
 
     def addWindow(self, frame):

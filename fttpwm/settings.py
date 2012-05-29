@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger("fttpwm.settings")
 
 
-class Settings(object):
+class Settings(dict):
     __defaultRcFileLocations = (
             expanduser("~/.fttpwmrc.py"),
             "/etc/fttpwmrc.py",
@@ -14,12 +14,9 @@ class Settings(object):
 
     __defaultSettings = dict()
 
-    def __init__(self):
-        self.__settings = dict()
-
     def __getattr__(self, key):
         try:
-            return self.__settings[key]
+            return self[key]
         except KeyError:
             return self.__defaultSettings[key]
 
@@ -31,9 +28,9 @@ class Settings(object):
             if exists(filename):
                 settingsFile = filename
 
-        self.__settings = dict()
+        self.clear()
 
-        execfile(settingsFile, {}, self.__settings)
+        execfile(settingsFile, {}, self)
 
 
 settings = Settings()

@@ -13,7 +13,8 @@ import xpybutil
 
 from ..mouse import combine, KeyOrButtonAction, MouseDragAction, WindowDragAction
 from ..utils import convertAttributes, signedToUnsigned16
-from .. import layout, wm
+from .. import layout
+from .. import singletons
 
 
 logger = logging.getLogger("fttpwm.bindings.layout")
@@ -29,7 +30,7 @@ def _onlyFloating(action):
     if issubclass(ActionClass, MouseDragAction):
         class OnlyFloating(ActionClass):
             def onStartDrag(self, event):
-                if not isinstance(wm.WM.instance.workspaces.currentWorkspace.layout, layout.Floating):
+                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
                     return self.CancelDrag
 
                 super(OnlyFloating, self).onStartDrag(event)
@@ -39,7 +40,7 @@ def _onlyFloating(action):
 
         class OnlyFloating(ActionClass):
             def onPress(self, event):
-                if not isinstance(wm.WM.instance.workspaces.currentWorkspace.layout, layout.Floating):
+                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
                     self.releaseGrabAndReplay(event)
                     return
 
@@ -120,7 +121,7 @@ def setLayout(layoutInstance):
     assert isinstance(layoutInstance, layout.BaseLayout)
 
     def setLayout_(*event):
-        ws = wm.WM.instance.workspaces.currentWorkspace
+        ws = singletons.wm.workspaces.current
         logger.debug("Setting workspace %r to layout %r.", ws, layoutInstance)
         ws.setLayout(layoutInstance)
 

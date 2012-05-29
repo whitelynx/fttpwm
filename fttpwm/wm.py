@@ -5,7 +5,9 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+import datetime
 import logging
+import operator
 import os
 import struct
 import sys
@@ -25,8 +27,11 @@ from .settings import settings
 from .utils import convertAttributes, findCurrentVisual
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
+from .signals import Signal
 from .signaled import SignaledDict
+from .statusbar import StatusBar
 from .workspace import WorkspaceManager
+from . import singletons
 
 
 logger = logging.getLogger("fttpwm.wm")
@@ -43,13 +48,28 @@ class Color(object):
 
 
 class WM(object):
-    instance = None
+    class RecurringEvent(object):
+        def __init__(self, interval, callback):
+            self.interval, self.callback = interval, callback
+            self.nextCall = datetime.datetime.now() + interval
+
+        def check(self):
+            if datetime.datetime.now() > self.nextCall:
+                self()
+
+        def __call__(self):
+            self.callback()
+            self.nextCall = datetime.datetime.now() + self.interval
 
     def __init__(self):
         self.pid = os.getpid()
 
-        assert WM.instance is None
-        WM.instance = self
+        self.startupFinished = False
+        self.onStartup = Signal()
+        self.timers = list()
+
+        assert singletons.wm is None
+        singletons.wm = self
 
         self.setup = xpybutil.conn.get_setup()
         self.screenNumber = xpybutil.conn.pref_screen
@@ -95,6 +115,21 @@ class WM(object):
         for startAction in settings.autostart:
             startAction()
         logger.info("Finished running autostart commands.")
+
+        self.startupFinished = True
+        logger.info("Running startup callbacks...")
+
+        self.onStartup()
+
+        StatusBar.startIfConfigured()
+
+        logger.info("Finished running startup callbacks.")
+
+    def whenStartupFinished(self, callback):
+        if self.startupFinished:
+            callback()
+        else:
+            self.onStartup.connect(callback)
 
     @property
     def strutsLeftSize(self):
@@ -430,6 +465,9 @@ class WM(object):
             if clientWindow in self.struts[side]:
                 del self.struts[side][clientWindow]
 
+    def callEvery(self, interval, callback):
+        self.timers.append(self.RecurringEvent(interval, callback))
+
     ## Main event loop ####
     def run(self):
         logger.info("Starting main event loop.")
@@ -463,6 +501,8 @@ class WM(object):
                         except Exception:
                             logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
                                     cb, e.__class__, w)
+
+                map(operator.methodcaller('check'), self.timers)
 
         except xcb.Exception:
             logger.exception("Error in main event loop! Exiting with error status.")

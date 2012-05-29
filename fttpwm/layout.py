@@ -86,3 +86,30 @@ class Rows(BaseLayout):
             y += height + self.padding
 
         xpybutil.conn.flush()
+
+
+class TabbedMaximized(BaseLayout):
+    """Shows the focused window maximized, and rolls all other windows into tabs.
+
+    """
+    logger = logging.getLogger("fttpwm.layouts.Columns")
+
+    def __init__(self, padding=0):
+        self.padding = padding
+
+    def arrange(self, ws):
+        frames = ws.viewableFrames
+
+        self.logger.debug("arrange: Arranging frames: %r", frames)
+
+        x = ws.effectiveWorkAreaX + self.padding
+        y = ws.effectiveWorkAreaY + self.padding
+        width = (ws.effectiveWorkAreaWidth - self.padding) / len(frames) - self.padding
+        height = ws.effectiveWorkAreaHeight - 2 * self.padding
+
+        for frame in frames:
+            self.logger.debug("Moving/resizing %r to %r.", frame, (x, y, width, height))
+            frame.moveResize(x, y, width, height, flush=False)
+            x += width + self.padding
+
+        xpybutil.conn.flush()

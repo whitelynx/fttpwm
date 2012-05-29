@@ -70,3 +70,33 @@ class _FontOptions(object):
 
 
 options = _FontOptions()
+
+
+class Align(object):
+    def __init__(self, ctx, width, height, leftPadding=0, rightPadding=0):
+        self.ctx, self.width, self.height = ctx, width, height
+        self.leftPadding, self.rightPadding = leftPadding, rightPadding
+
+    def center(self, text):
+        xBearing, yBearing, textWidth, textHeight = self.ctx.text_extents(text)[:4]
+
+        return (
+                (self.width - textWidth) / 2 - xBearing,
+                (self.height - textHeight) / 2 - yBearing
+                )
+
+    def left(self, text):
+        xBearing, yBearing, textWidth, textHeight = self.ctx.text_extents(text)[:4]
+
+        return (
+                self.leftPadding - xBearing,
+                (self.height - textHeight) / 2 - yBearing
+                )
+
+    def right(self, text):
+        xBearing, yBearing, textWidth, textHeight = self.ctx.text_extents(text)[:4]
+
+        return (
+                self.width - textWidth - self.rightPadding - xBearing,
+                (self.height - textHeight) / 2 - yBearing
+                )

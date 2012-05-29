@@ -18,10 +18,11 @@ from xpybutil.util import get_atom as atom
 
 import cairo
 
+from .bindings.layout import Floating as FloatingBindings
 from .ewmh import EWMHAction, EWMHWindowState
 from .icccm import ICCCMWindowState
 from .mouse import bindMouse
-from .layout import Floating
+from .signals import Signal
 from .settings import settings
 from .themes import Default, fonts
 from .utils import convertAttributes
@@ -50,6 +51,8 @@ class WindowFrame(object):
         self.wm = wm
         self.frameWindowID = xpybutil.conn.generate_id()
         self.clientWindowID = clientWindowID
+
+        self.requestShow = Signal()
 
         self.focused = False
         self.visible = False  # Whether or not this window is currently visible on the screen
@@ -190,29 +193,46 @@ class WindowFrame(object):
     def activateBindings(self):
         pass
         #bindMouse({
-        #        #'1': Floating.raiseAndMoveWindow,
+        #        #'1': FloatingBindings.raiseAndMoveWindow,
         #        }, context=self.frameWindowID)
 
     ## Commands ####
+    def minimize(self):
+        self.logger.debug("minimize: Marking %r as hidden.", self)
+        self.viewable = False
+        self.addWMState(EWMHWindowState.Hidden)
+        self.hide()
+
+    def restore(self):
+        self.logger.debug("restore: Marking %r as not hidden.", self)
+        self.viewable = True
+        self.removeWMState(EWMHWindowState.Hidden)
+        self.requestShow(self)
+
     def hide(self):
         self.logger.debug("hide: Hiding %r.", self)
-        try:
-            xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
-        except:
-            self.logger.exception("hide: Error unmapping %r!", self)
-        else:
-            self.viewable = False
-            self.addWMState(EWMHWindowState.Hidden)
 
-    def show(self):
-        self.logger.debug("show: Showing %r.", self)
-        try:
-            xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
-        except:
-            self.logger.exception("show: Error mapping %r!", self)
-        else:
-            self.viewable = True
-            self.removeWMState(EWMHWindowState.Hidden)
+        # If this window is currently visible, unmap it.
+        if self.visible:
+            self.logger.debug("hide: Unmapping %r.", self)
+            try:
+                xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
+            except:
+                self.logger.exception("hide: Error unmapping %r!", self)
+
+            icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Iconic, xcb.NONE)
+
+    def onShow(self):
+        self.logger.debug("onShow: Showing %r.", self)
+        # If this window is viewable, map it.
+        if self.viewable:
+            self.logger.debug("onShow: Mapping %r.", self)
+            try:
+                xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
+            except:
+                self.logger.exception("onShow: Error mapping %r!", self)
+
+            icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
 
     def moveResize(self, x, y, width, height, flush=True):
         attributes = convertAttributes({

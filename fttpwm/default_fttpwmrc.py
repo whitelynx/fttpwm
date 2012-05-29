@@ -49,6 +49,8 @@ fonts.options.set(
         subpixelOrder=fonts.subpixelOrder.default,
         )
 
+enableStatusBar = True
+
 # Startup
 setWallpaper()
 chdir(expanduser("~"))

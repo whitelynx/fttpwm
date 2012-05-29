@@ -1,7 +1,7 @@
 import logging
 import sys
 
-from .. import wm
+from .. import singletons
 
 
 logger = logging.getLogger("fttpwm.bindings.wm")
@@ -13,7 +13,7 @@ def switchWorkspace(ws):
     """
     def switchWorkspace_(*event):
         logger.debug("Switching to workspace %r", ws)
-        wm.WM.instance.workspaces.switchTo(ws)
+        singletons.wm.workspaces.switchTo(ws)
 
     return switchWorkspace_
 

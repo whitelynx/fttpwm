@@ -41,7 +41,7 @@ settings.setDefaults(
                 workspacesAfterCurrent=singletons.wm.workspaces.namesAfterCurrent,
                 wacs=u'  ' if singletons.wm.workspaces.namesAfterCurrent else u'',  # Spacing for if we're on the last
                 ),
-        statusBarRightFormat='{isodatetime}',
+        statusBarRightFormat='{isodatetime} ',
         #statusBarCenterFormat='FTTPWM',
         statusBarCenterFormat='',
         statusBarTitle='**statusbar**',

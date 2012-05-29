@@ -26,8 +26,12 @@ def startSingle(*command, **kwargs):
 
     def start_(*event):
         logger.debug("Starting command: %r", command)
-        pid = subprocess.Popen(command, **kwargs).pid
-        logger.debug("Command started; PID: %r", pid)
+        try:
+            pid = subprocess.Popen(command, **kwargs).pid
+        except:
+            logger.exception("Error while starting command %r!", command)
+        else:
+            logger.debug("Command started; PID: %r", pid)
 
     return start_
 
@@ -57,7 +61,10 @@ def startParallel(commands, **kwargs):
         pids = list()
         for command in commands:
             logger.debug("Starting command: %r", command)
-            pids.append(subprocess.Popen(command, **kwargs).pid)
+            try:
+                pids.append(subprocess.Popen(command, **kwargs).pid)
+            except:
+                logger.exception("Error while starting command %r!", command)
 
         logger.debug("Command set started; PIDs: %r", pids)
 
@@ -90,6 +97,9 @@ def startSerial(commands, **kwargs):
         # running all the commands in order in that process.
         for command in commands:
             logger.debug("Running command: %r", command)
-            subprocess.check_call(command, **kwargs)
+            try:
+                subprocess.check_call(command, **kwargs)
+            except:
+                logger.exception("Error while starting command %r!", command)
 
     return start_

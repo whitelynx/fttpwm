@@ -64,6 +64,7 @@ class WorkspaceManager(object):
         self.workspaces = SignaledList()
         self.workspacesByName = SignaledDict()
         self.currentChanged = Signal()
+        self._currentWorkspaceNum = None
 
         self.baseWorkAreaUpdated = Signal()
         self.baseWorkAreaUpdated.connect(self.updateWorkAreaHint)
@@ -160,13 +161,26 @@ class WorkspaceManager(object):
 
     @currentIndex.setter
     def currentIndex(self, value):
+        if self._currentWorkspaceNum == value:
+            # Skip update if we're already on the requested workspace.
+            return
+
+        old = self.current
+        if old:
+            old.hide()
+
         self._currentWorkspaceNum = value
+
+        self.current.show()
         ewmh.set_current_desktop(value)
         self.currentChanged()
 
     @property
     def current(self):
-        return self.workspaces[self.currentIndex]
+        try:
+            return self.workspaces[self.currentIndex]
+        except (TypeError, IndexError):
+            return None
 
     @current.setter
     def current(self, workspace):
@@ -194,9 +208,6 @@ class WorkspaceManager(object):
         else:
             workspace = self.workspaces[workspace]
 
-        self.current.hide()
-
-        workspace.show()
         self.current = workspace
 
 
@@ -314,17 +325,14 @@ class Workspace(object):
 
     def show(self):
         self.logger.debug("show: Showing.")
-        ewmh.set_current_desktop(self.index)
 
-        # Frames will show themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
-        #TODO: Change this!
+        ewmh.set_current_desktop(self.index)
         self.visible = True
+        self.arrangeWindows()
 
     def hide(self):
         self.logger.debug("hide: Hiding.")
 
-        # Frames will hide themselves when Workspace.visible changes. (see WindowFrame.onWorkspaceVisibilityChanged)
-        #TODO: Change this!
         self.visible = False
 
     def addWindow(self, frame):

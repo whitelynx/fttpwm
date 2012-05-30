@@ -31,7 +31,11 @@ class Floating(BaseLayout):
     logger = logging.getLogger("fttpwm.layouts.Columns")
 
     def arrange(self, ws):
-        pass
+        frames = ws.viewableFrames
+
+        # Ensure all frames are visible
+        for frame in frames:
+            frame.onShow()
 
 
 class Columns(BaseLayout):
@@ -57,6 +61,9 @@ class Columns(BaseLayout):
             self.logger.debug("Moving/resizing %r to %r.", frame, (x, y, width, height))
             frame.moveResize(x, y, width, height, flush=False)
             x += width + self.padding
+
+            # Ensure all frames are visible
+            frame.onShow()
 
         xpybutil.conn.flush()
 
@@ -85,6 +92,9 @@ class Rows(BaseLayout):
             frame.moveResize(x, y, width, height, flush=False)
             y += height + self.padding
 
+            # Ensure all frames are visible
+            frame.onShow()
+
         xpybutil.conn.flush()
 
 
@@ -111,5 +121,8 @@ class TabbedMaximized(BaseLayout):
             self.logger.debug("Moving/resizing %r to %r.", frame, (x, y, width, height))
             frame.moveResize(x, y, width, height, flush=False)
             x += width + self.padding
+
+            # Ensure all frames are visible
+            frame.onShow()
 
         xpybutil.conn.flush()

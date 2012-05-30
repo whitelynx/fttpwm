@@ -210,6 +210,9 @@ class WindowFrame(object):
         self.requestShow(self)
 
     def hide(self):
+        if not self.visible:
+            self.logger.debug("hide: %r is already hidden; skipping.", self)
+
         self.logger.debug("hide: Hiding %r.", self)
 
         # If this window is currently visible, unmap it.
@@ -223,7 +226,11 @@ class WindowFrame(object):
             icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Iconic, xcb.NONE)
 
     def onShow(self):
+        if self.visible:
+            self.logger.debug("onShow: %r is already shown; skipping.", self)
+
         self.logger.debug("onShow: Showing %r.", self)
+
         # If this window is viewable, map it.
         if self.viewable:
             self.logger.debug("onShow: Mapping %r.", self)
@@ -234,7 +241,13 @@ class WindowFrame(object):
 
             icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
 
+        else:
+            self.logger.warn("onShow called, but frame is not viewable!")
+
     def moveResize(self, x, y, width, height, flush=True):
+        if (self.x, self.y, self.width, self.height) == (x, y, width, height):
+            self.logger.trace("moveResize: Geometry didn't change; skipping ConfigureWindow call.")
+
         attributes = convertAttributes({
                 ConfigWindow.X: x,
                 ConfigWindow.Y: y,
@@ -255,6 +268,8 @@ class WindowFrame(object):
             if isinstance(ev, ConfigureNotifyEvent) and ev.window == self.frameWindowID:
                 return
 
+        self.x, self.y = event.x, event.y
+
         if (self.width, self.height) != (event.width, event.height):
             self.logger.trace("onConfigureNotify: Window size changed to %r.", (event.width, event.height))
 
@@ -266,7 +281,8 @@ class WindowFrame(object):
                     ConfigWindow.Height: self.innerHeight,
                     })
             xpybutil.conn.core.ConfigureWindow(self.clientWindowID, *attributes)
-            self.paint()
+
+            self.wm.callWhenQueueEmpty(self.paint)
 
     def onEnterNotify(self, event):
         self.logger.trace("onEnterNotify: %r", event.__dict__)
@@ -278,12 +294,12 @@ class WindowFrame(object):
         # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
         # collapse such series into a single call to paint() so we don't get extraneous redraws.
         if event.count == 0:
-            self.paint()
+            self.wm.callWhenQueueEmpty(self.paint)
 
     def onMapNotify(self, event):
         self.visible = True
         self.viewable = True
-        self.paint()
+        self.wm.callWhenQueueEmpty(self.paint)
 
     def onUnmapNotify(self, event):
         self.visible = False
@@ -359,18 +375,7 @@ class WindowFrame(object):
             self.logger.warn("onWorkspaceVisibilityChanged: No frame window! PANIC!")
             return
 
-        if self.workspace.visible:
-            # If this window is viewable, map it.
-            if self.viewable:
-                self.logger.debug("onWorkspaceVisibilityChanged: Showing %r.", self)
-                try:
-                    xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
-                except:
-                    self.logger.exception("onWorkspaceVisibilityChanged: Error mapping %r!", self)
-
-                icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
-
-        else:
+        if not self.workspace.visible:
             # If this window is currently visible, unmap it.
             if self.visible:
                 self.logger.debug("onWorkspaceVisibilityChanged: Hiding %r.", self)
@@ -411,9 +416,14 @@ class WindowFrame(object):
     ## Visual Stuff ####
     def applyTheme(self):
         settings.theme.apply(self)
-        self.paint()
+
+        self.wm.callWhenQueueEmpty(self.paint)
 
     def paint(self):
+        if self.frameWindowID is None or self.clientWindowID is None:
+            # Skip painting.
+            return
+
         self.context.set_operator(cairo.OPERATOR_OVER)
 
         settings.theme.paintWindow(self.context, self)

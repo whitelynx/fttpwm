@@ -5,6 +5,7 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from collections import deque
 import datetime
 import logging
 import operator
@@ -55,8 +56,15 @@ class WM(object):
             self.nextCall = datetime.datetime.now() + interval
 
         def check(self):
-            if datetime.datetime.now() > self.nextCall:
-                self()
+            try:
+                if datetime.datetime.now() > self.nextCall:
+                    self()
+            except StopIteration:
+                # Leave the timer queue.
+                return None
+
+            # Stay in the timer queue.
+            return self
 
         def __call__(self):
             self.callback()
@@ -67,7 +75,8 @@ class WM(object):
 
         self.startupFinished = False
         self.onStartup = Signal()
-        self.timers = list()
+        self.timers = deque()
+        self.whenQueueEmpty = set()
 
         assert singletons.wm is None
         singletons.wm = self
@@ -476,14 +485,18 @@ class WM(object):
     def callEvery(self, interval, callback):
         self.timers.append(self.RecurringEvent(interval, callback))
 
+    def callWhenQueueEmpty(self, callback):
+        self.whenQueueEmpty.add(callback)
+
     ## Main event loop ####
     def run(self):
         logger.info("Starting main event loop.")
 
-        #xpybutil.event.main()
-        #XXX: HACK to work around the fact that xpybutil.event will never send us MapRequest, even if we've subscribed
-        # to SubstructureRedirect, and will never send us SelectionRequest when we own a selection. And yes, this is a
-        # direct copy of xpybutil.event.main with some minor changes.
+        #NOTE: This does several things that xpybutil.event.main doesn't do:
+        # - It ensures that the WM gets MapRequest events, and windows get SelectionRequest when appropriate.
+        # - It implements crude timers so various things can register a callback to happen every `n` seconds, or once
+        #   after `n` seconds.
+        # - It implements callWhenQueueEmpty, which effectively runs a callback when we're idle.
         try:
             while True:
                 #FIXME: Find a better way to do timeouts than polling and sleeping! It'd be preferable to block, if we
@@ -491,13 +504,26 @@ class WM(object):
                 #xpybutil.event.read(block=True)
                 xpybutil.event.read(block=False)
 
-                events = 0
+                # Check if there are any waiting events.
+                if len(xpybutil.event.peek()) == 0:
+                    # Run all the callbacks in whenQueueEmpty, and clear it.
+                    for callback in self.whenQueueEmpty:
+                        callback()
+
+                    self.whenQueueEmpty.clear()
+
+                    #XXX: HACK: Sleep 10ms, so we can check for wakeups at least that often.
+                    time.sleep(0.01)
+
                 for e in xpybutil.event.queue():
-                    events += 1
                     w = None
                     if isinstance(e, MappingNotifyEvent):
+                        # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
+                        # update the stored keyboard mapping.
                         w = None
                     elif isinstance(e, MapRequestEvent):
+                        # Send all MapRequest events to the root window, so the WM can pick them up. (this should
+                        # probably happen for all SubstructureRedirect request events)
                         w = self.root
                     elif hasattr(e, 'window'):
                         w = e.window
@@ -516,15 +542,13 @@ class WM(object):
                             logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
                                     cb, e.__class__, w)
 
-                map(operator.methodcaller('check'), self.timers)
-
-                #XXX: HACK: Sleep 10ms, so we can check for wakeups at least that often.
-                if events == 0:
-                    time.sleep(0.01)
+                for timer in self.timers:
+                    # If the timer's 'check' method returns None, remove it from the queue.
+                    if timer.check() is None:
+                        self.timers.remove(timer)
 
         except xcb.Exception:
             logger.exception("Error in main event loop! Exiting with error status.")
             sys.exit(1)
-        #/HACK
 
         logger.info("Event loop terminated; shutting down normally.")

@@ -16,7 +16,7 @@ import time
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
-from xcb.xproto import MappingNotifyEvent, MapRequestEvent, MapNotifyEvent
+from xcb.xproto import MappingNotifyEvent, MapRequestEvent, ConfigureNotifyEvent
 
 import xpybutil
 import xpybutil.event
@@ -539,9 +539,6 @@ class WM(object):
                     elif hasattr(e, 'requestor'):
                         w = e.requestor
 
-                    if isinstance(e, MapNotifyEvent):
-                        logger.debug("Got MapNotifyEvent: %r; w=%r", e.__dict__, w)
-
                     key = (e.__class__, w)
                     for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
                         try:
@@ -549,6 +546,13 @@ class WM(object):
                         except Exception:
                             logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
                                     cb, e.__class__, w)
+
+                    #XXX: Debugging...
+                    #if isinstance(e, ConfigureNotifyEvent):
+                    #    logger.debug("Got ConfigureNotifyEvent: %r; w=%r; listeners: %r",
+                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
+
+                xpybutil.conn.flush()
 
                 for timer in self.timers:
                     # If the timer's 'check' method returns None, remove it from the queue.

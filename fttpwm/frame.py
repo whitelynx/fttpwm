@@ -96,7 +96,7 @@ class WindowFrame(object):
         xpybutil.event.connect('UnmapNotify', self.frameWindowID, self.onUnmapNotify)
 
         xpybutil.window.listen(self.frameWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
-                'SubstructureNotify')
+                'StructureNotify', 'SubstructureNotify')
 
     def unsubscribeFromEvents(self):
         self.logger.info("Unsubscribing from events.")
@@ -213,10 +213,14 @@ class WindowFrame(object):
 
     ## Frame events ####
     def onConfigureNotify(self, event):
+        # If this isn't a ConfigureNotify for our frame, ignore it.
+        if event.window != self.frameWindowID:
+            return
+
         # If there's any other ConfigureNotify events for this window in the queue, ignore this one.
         xpybutil.event.read(block=False)
         for ev in xpybutil.event.peek():
-            if isinstance(ev, ConfigureNotifyEvent) and ev.window == self.frameWindowID:
+            if isinstance(ev, ConfigureNotifyEvent) and ev.event == ev.window and ev.event == self.frameWindowID:
                 return
 
         self.x, self.y = event.x, event.y
@@ -630,7 +634,8 @@ class WindowFrame(object):
         self.wm.callWhenQueueEmpty(self.paint)
 
     def paint(self):
-        if self.frameWindowID is None or self.clientWindowID is None or self.icccmState == icccm.State.Withdrawn:
+        if not self.initialized or self.frameWindowID is None or self.clientWindowID is None \
+                or self.icccmState == icccm.State.Withdrawn:
             # Skip painting.
             return
 
@@ -639,4 +644,3 @@ class WindowFrame(object):
         settings.theme.paintWindow(self.context, self)
 
         self.surface.flush()
-        xpybutil.conn.flush()

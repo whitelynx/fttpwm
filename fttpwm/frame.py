@@ -20,9 +20,9 @@ import cairo
 
 from .bindings.layout import Floating as FloatingBindings
 from .ewmh import EWMHAction, EWMHWindowState
-from .icccm import ICCCMWindowState
 from .mouse import bindMouse
 from .signals import Signal
+from .signaled import SignaledSet
 from .settings import settings
 from .themes import Default, fonts
 from .utils import convertAttributes
@@ -49,29 +49,8 @@ class WindowFrame(object):
     """
     def __init__(self, wm, clientWindowID):
         self.wm = wm
-        self.frameWindowID = xpybutil.conn.generate_id()
+        self.frameWindowID = xcb.NONE
         self.clientWindowID = clientWindowID
-
-        self.requestShow = Signal()
-
-        self.focused = False
-        self.visible = False  # Whether or not this window is currently visible on the screen
-        self.viewable = False  # Whether or not this window would be visible if its workspace were shown
-
-        self._workspace = None
-
-        self.windowAttributes = {
-                CW.OverrideRedirect: 1,
-                CW.BackPixel: wm.black,
-                }
-
-        # Start fetching some information about the client window.
-        cookies = Namespace()
-        cookies.geometry = xpybutil.conn.core.GetGeometry(clientWindowID)
-        cookies.ewmhTitle = ewmh.get_wm_name(clientWindowID)
-        cookies.icccmTitle = icccm.get_wm_name(clientWindowID)
-        cookies.icccmProtocols = icccm.get_wm_protocols(clientWindowID)
-        xpybutil.conn.flush()
 
         self.logger = logging.getLogger(
                 "fttpwm.frame.WindowFrame.{}(client:{})".format(
@@ -79,91 +58,45 @@ class WindowFrame(object):
                     self.clientWindowID
                     ))
 
-        icccm.set_wm_state(clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
+        self.requestShow = Signal()
 
-        #TODO: Keep these updated where appropriate!
-        self.wm_states = [EWMHWindowState.MaximizedVert]
-        ewmh.set_wm_state(clientWindowID, self.wm_states)
-        ewmh.set_wm_allowed_actions(clientWindowID, [
-                EWMHAction.Move,
-                EWMHAction.Resize,
-                #EWMHAction.Minimize,
-                #EWMHAction.Shade,
-                #EWMHAction.Stick,
-                #EWMHAction.MaximizeHorz,
-                #EWMHAction.MaximizeVert,
-                #EWMHAction.Fullscreen,
-                #EWMHAction.ChangeDesktop,
-                EWMHAction.Close,
-                ])
+        self.clientMapped = False  # Whether or not the client window is currently mapped on the screen
+        self.frameMapped = False  # Whether or not the frame window is currently mapped on the screen
+        self.viewable = False  # Whether or not this window would be visible if its workspace were shown
+        self.initialized = False  # Whether or not this frame has finished initializing
 
-        #TODO: Implement _NET_WM_PING!
-        #if atom('_NET_WM_PING') in icccm.get_wm_protocols(clientWindowID).reply():
-        #    self.startPing()
+        self._workspace = None
+        self._icccmState = icccm.State.Withdrawn
+        self._icccmIconWindowID = xcb.NONE
 
-        # Get window geometry.
-        geom = cookies.geometry.reply()
-        del cookies.geometry
-        self.x, self.y, self.width, self.height = geom.x, geom.y, geom.width, geom.height
+        self.ewmhStates = SignaledSet()
 
-        # Create frame window.
-        self.frameWindowID, cookies.createWindow = wm.createWindow(
-                self.x, self.y, self.width, self.height,
-                attributes=self.windowAttributes, windowID=self.frameWindowID, checked=True
-                )
-
-        # Set window title.
-        self.title = cookies.ewmhTitle.reply() or cookies.icccmTitle.reply()
-        del cookies.ewmhTitle
-        del cookies.icccmTitle
-
-        # Set the frame's _NET_WM_NAME to match the client's title.
-        cookies.setTitle = ewmh.set_wm_name_checked(self.frameWindowID, self.title)
-
-        # Reparent client window to frame.
-        clientX, clientY = settings.theme.getClientGeometry(self)[:2]
-        xpybutil.conn.core.ReparentWindow(clientWindowID, self.frameWindowID, clientX, clientY)
-
-        # Set up Cairo.
-        self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, wm.visual, self.width, self.height)
-        self.context = cairo.Context(self.surface)
-
-        self.applyTheme()
-        self.subscribeToEvents()
-        self.activateBindings()
-
-        # Get ICCCM _NET_WM_PROTOCOLS property.
-        self.protocols = cookies.icccmProtocols.reply()
-        del cookies.icccmProtocols
-
-        # Flush the connection, and make sure all of our requests succeeded.
-        xpybutil.conn.flush()
-        for name, cookie in cookies._get_kwargs():
-            try:
-                cookie.check()
-            except:
-                self.logger.exception("Error while checking results of %s query!", name)
+        self.subscribeToClientEvents()
 
     def __repr__(self):
         return "<Frame {} for client {}>".format(self.frameWindowID, self.clientWindowID)
 
-    def subscribeToEvents(self):
-        self.logger.info("Subscribing to events.")
+    def subscribeToClientEvents(self):
+        self.logger.info("Subscribing to client window events.")
 
-        # Frame window events
+        xpybutil.event.connect('MapNotify', self.clientWindowID, self.onClientMapNotify)
+        xpybutil.event.connect('UnmapNotify', self.clientWindowID, self.onClientUnmapNotify)
+        xpybutil.event.connect('DestroyNotify', self.clientWindowID, self.onClientDestroyNotify)
+
+        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
+                'StructureNotify')
+
+    def subscribeToFrameEvents(self):
+        self.logger.info("Subscribing to frame window events.")
+
         xpybutil.event.connect('ConfigureNotify', self.frameWindowID, self.onConfigureNotify)
         xpybutil.event.connect('EnterNotify', self.frameWindowID, self.onEnterNotify)
         xpybutil.event.connect('Expose', self.frameWindowID, self.onExpose)
         xpybutil.event.connect('MapNotify', self.frameWindowID, self.onMapNotify)
+        xpybutil.event.connect('UnmapNotify', self.frameWindowID, self.onUnmapNotify)
 
         xpybutil.window.listen(self.frameWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
-                'StructureNotify', 'SubstructureNotify')
-
-        # Client window events
-        xpybutil.event.connect('UnmapNotify', self.clientWindowID, self.onClientUnmapNotify)
-        xpybutil.event.connect('DestroyNotify', self.clientWindowID, self.onClientDestroyNotify)
-
-        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange')
+                'SubstructureNotify')
 
     def unsubscribeFromEvents(self):
         self.logger.info("Unsubscribing from events.")
@@ -200,46 +133,64 @@ class WindowFrame(object):
     def minimize(self):
         self.logger.debug("minimize: Marking %r as hidden.", self)
         self.viewable = False
-        self.addWMState(EWMHWindowState.Hidden)
-        self.hide()
+
+        if self.initialized:
+            self.ewmhStates.add(EWMHWindowState.Hidden)
+            self.hide()
 
     def restore(self):
         self.logger.debug("restore: Marking %r as not hidden.", self)
         self.viewable = True
-        self.removeWMState(EWMHWindowState.Hidden)
-        self.requestShow(self)
+
+        if self.initialized:
+            self.ewmhStates.discard(EWMHWindowState.Hidden)
+            self.requestShow(self)
 
     def hide(self):
-        if not self.visible:
-            self.logger.debug("hide: %r is already hidden; skipping.", self)
+        self.logger.trace("hide: Hiding %r.", self)
 
-        self.logger.debug("hide: Hiding %r.", self)
+        cookies = list()
 
-        # If this window is currently visible, unmap it.
-        if self.visible:
-            self.logger.debug("hide: Unmapping %r.", self)
+        if self.clientMapped:
+            self.logger.debug("hide: Unmapping client window.")
+            cookies.append(xpybutil.conn.core.UnmapWindowChecked(self.clientWindowID))
+
+        if self.frameMapped:
+            self.logger.debug("hide: Unmapping frame window.")
+            cookies.append(xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID))
+
+        for cookie in cookies:
             try:
-                xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
+                cookie.check()
             except:
                 self.logger.exception("hide: Error unmapping %r!", self)
 
-            icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Iconic, xcb.NONE)
+        self.icccmState = icccm.State.Iconic
+        #FIXME: EWMH state!
 
     def onShow(self):
-        if self.visible:
-            self.logger.debug("onShow: %r is already shown; skipping.", self)
-
-        self.logger.debug("onShow: Showing %r.", self)
+        self.logger.trace("onShow: Showing %r.", self)
 
         # If this window is viewable, map it.
         if self.viewable:
-            self.logger.debug("onShow: Mapping %r.", self)
-            try:
-                xpybutil.conn.core.MapWindowChecked(self.frameWindowID).check()
-            except:
-                self.logger.exception("onShow: Error mapping %r!", self)
+            cookies = list()
 
-            icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Normal, xcb.NONE)
+            if not self.clientMapped:
+                self.logger.debug("onShow: Mapping client window.")
+                cookies.append(xpybutil.conn.core.MapWindowChecked(self.clientWindowID))
+
+            if not self.frameMapped:
+                self.logger.debug("onShow: Mapping frame window.")
+                cookies.append(xpybutil.conn.core.MapWindowChecked(self.frameWindowID))
+
+            for cookie in cookies:
+                try:
+                    cookie.check()
+                except:
+                    self.logger.exception("hide: Error unmapping %r!", self)
+
+            self.icccmState = icccm.State.Normal
+            #FIXME: EWMH state!
 
         else:
             self.logger.warn("onShow called, but frame is not viewable!")
@@ -253,14 +204,14 @@ class WindowFrame(object):
                 ConfigWindow.Y: y,
                 ConfigWindow.Width: width,
                 ConfigWindow.Height: height,
-                ConfigWindow.StackMode: StackMode.Above
+                #ConfigWindow.StackMode: StackMode.Above,
                 })
         xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *attributes)
 
         if flush:
             xpybutil.conn.flush()
 
-    ## X events ####
+    ## Frame events ####
     def onConfigureNotify(self, event):
         # If there's any other ConfigureNotify events for this window in the queue, ignore this one.
         xpybutil.event.read(block=False)
@@ -269,20 +220,27 @@ class WindowFrame(object):
                 return
 
         self.x, self.y = event.x, event.y
+        self.width, self.height = event.width, event.height
 
-        if (self.width, self.height) != (event.width, event.height):
-            self.logger.trace("onConfigureNotify: Window size changed to %r.", (event.width, event.height))
+        self.logger.trace("onConfigureNotify: Window geometry changed to %rx%r+%r+%r",
+                self.width, self.height, self.x, self.y)
 
-            # Window size changed; resize surface and redraw.
-            self.surface.set_size(event.width, event.height)
-            self.width, self.height = event.width, event.height
-            attributes = convertAttributes({
-                    ConfigWindow.Width: self.innerWidth,
-                    ConfigWindow.Height: self.innerHeight,
-                    })
-            xpybutil.conn.core.ConfigureWindow(self.clientWindowID, *attributes)
+        # Window size changed; resize surface and redraw.
+        self.surface.set_size(event.width, event.height)
 
-            self.wm.callWhenQueueEmpty(self.paint)
+        # Send client window a ConfigureNotify as well (regardless of whether the client's geometry actually changed)
+        # so windows can update if their absolute coordinates changed.
+        clientX, clientY, clientW, clientH = self.innerGeometry
+
+        attributes = convertAttributes({
+                ConfigWindow.X: clientX,
+                ConfigWindow.Y: clientY,
+                ConfigWindow.Width: clientW,
+                ConfigWindow.Height: clientH,
+                })
+        xpybutil.conn.core.ConfigureWindow(self.clientWindowID, *attributes)
+
+        self.wm.callWhenQueueEmpty(self.paint)
 
     def onEnterNotify(self, event):
         self.logger.trace("onEnterNotify: %r", event.__dict__)
@@ -297,15 +255,222 @@ class WindowFrame(object):
             self.wm.callWhenQueueEmpty(self.paint)
 
     def onMapNotify(self, event):
-        self.visible = True
-        self.viewable = True
+        self.frameMapped = True
+
         self.wm.callWhenQueueEmpty(self.paint)
 
     def onUnmapNotify(self, event):
-        self.visible = False
+        self.frameMapped = False
+
+    ## Client events ####
+
+    ## Client window states
+    #     Event     |     From      | Initial WM_STATE | WM_HINTS.initial_state |     WM Actions        | New WM_STATE
+    #               |               |                  |                        | Client Window | Frame |
+    #------------------------------------------------------------------------------------------------------------------
+    # MapNotify     | client window | Withdrawn        | Iconic                 | Unmap         | Unmap | Iconic
+    #  "            |  "            |  "               | Normal                 | Map (?)       | Map   | Normal
+    #  "            |  "            | Iconic           | -                      |  "            |  "    |  "
+    # ClientMessage |  "            | Normal           | -                      | Unmap         | Unmap | Iconic
+    # UnmapNotify   |  "            | Iconic           | -                      | Unmap (?)     | Unmap | Withdrawn
+    #  "            |  "            | Normal           | -                      |  "            |  "    |  "
+
+    def onClientMapRequest(self):
+        self.logger.debug("onClientMapRequest: Initial ICCCM state: %r", self.icccmState)
+
+        if self.icccmState == icccm.State.Iconic:
+            # If the window is mapping itself after being in the Iconic state, we should show the frame too.
+            self.onShow()
+            return
+
+        elif self.icccmState != icccm.State.Withdrawn:
+            # The window isn't transitioning from Withdrawn to another state, so ignore its hints. (it should be
+            # sending a client request if it wants to change them after initially mapping the window)
+            return
+
+        # The rest of this method should ONLY be called if this is an initial MapNotify. (if the window was previously
+        # in the Withdrawn state)
+        self.logger.debug("onClientMapRequest: Client window initial map notification received; setting up frame.")
+
+        # Start fetching some information about the client window.
+        cookies = Namespace()
+        cookies.geometry = xpybutil.conn.core.GetGeometry(self.clientWindowID)
+        cookies.ewmhTitle = ewmh.get_wm_name(self.clientWindowID)
+        cookies.icccmTitle = icccm.get_wm_name(self.clientWindowID)
+        cookies.icccmProtocols = icccm.get_wm_protocols(self.clientWindowID)
+        cookies.icccmClientHints = icccm.get_wm_hints(self.clientWindowID)
+        xpybutil.conn.flush()
+
+        if self.frameWindowID == xcb.NONE:
+            self.frameWindowID = xpybutil.conn.generate_id()
+            self.frameWindowAttributes = {
+                    CW.OverrideRedirect: 1,
+                    CW.BackPixel: self.wm.black,
+                    }
+
+            newLoggerName = "fttpwm.frame.WindowFrame.{}(client:{})".format(
+                    self.frameWindowID,
+                    self.clientWindowID
+                    )
+            self.logger.debug("Creating frame window; logger renaming to %r.", newLoggerName)
+            self.logger = logging.getLogger(newLoggerName)
+
+            # Get window geometry.
+            geom = cookies.geometry.reply()
+            del cookies.geometry
+            self.x, self.y, self.width, self.height = geom.x, geom.y, geom.width, geom.height
+
+            # Create the frame window.
+            self.frameWindowID, cookies.createWindow = self.wm.createWindow(
+                    self.x, self.y, self.width, self.height,
+                    attributes=self.frameWindowAttributes, windowID=self.frameWindowID, checked=True
+                    )
+
+            # Set up Cairo.
+            self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, self.wm.visual, self.width, self.height)
+            self.context = cairo.Context(self.surface)
+
+            self.activateBindings()
+
+        else:
+            # Get window geometry.
+            geom = cookies.geometry.reply()
+            del cookies.geometry
+
+            # Move and resize the frame window.
+            self.moveResize(geom.x, geom.y, geom.width, geom.height, flush=False)
+
+        # Set window title.
+        self.title = cookies.ewmhTitle.reply() or cookies.icccmTitle.reply()
+        del cookies.ewmhTitle
+        del cookies.icccmTitle
+
+        # Set the frame's _NET_WM_NAME to match the client's title.
+        cookies.setTitle = ewmh.set_wm_name_checked(self.frameWindowID, self.title)
+
+        # Reparent client window to frame.
+        clientX, clientY = settings.theme.getClientGeometry(self)[:2]
+        xpybutil.conn.core.ReparentWindow(self.clientWindowID, self.frameWindowID, clientX, clientY)
+
+        #TODO: Keep these updated where appropriate!
+        self.ewmhStates.clear()
+        ewmh.set_wm_allowed_actions(self.clientWindowID, [
+                EWMHAction.Move,
+                EWMHAction.Resize,
+                #EWMHAction.Minimize,
+                #EWMHAction.Shade,
+                #EWMHAction.Stick,
+                #EWMHAction.MaximizeHorz,
+                #EWMHAction.MaximizeVert,
+                #EWMHAction.Fullscreen,
+                #EWMHAction.ChangeDesktop,
+                EWMHAction.Close,
+                ])
+
+        self.icccmClientHints = cookies.icccmClientHints.reply()
+        del cookies.icccmClientHints
+
+        #icccm.get_wm_hints => {
+        #    'flags': {
+        #        'Input': v[0] & Hint.Input > 0,
+        #        'State': v[0] & Hint.State > 0,
+        #        'IconPixmap': v[0] & Hint.IconPixmap > 0,
+        #        'IconWindow': v[0] & Hint.IconWindow > 0,
+        #        'IconPosition': v[0] & Hint.IconPosition > 0,
+        #        'IconMask': v[0] & Hint.IconMask > 0,
+        #        'WindowGroup': v[0] & Hint.WindowGroup > 0,
+        #        'Message': v[0] & Hint.Message > 0,
+        #        'Urgency': v[0] & Hint.Urgency > 0
+        #    },
+        #    'input': v[1],
+        #    'initial_state': v[2],
+        #    'icon_pixmap': v[3],
+        #    'icon_window': v[4],
+        #    'icon_x': v[5],
+        #    'icon_y': v[6],
+        #    'icon_mask': v[7],
+        #    'window_group': v[8],
+        #}
+        #TODO: Respect more of the above hints!
+
+        #TODO: Honor the initial value of _NET_WM_STATE! (ewmh.get_wm_state)
+
+        # Default to showing the window normally.
+        initialState = icccm.State.Normal
+
+        if self.icccmClientHints['flags']['State']:
+            initialState = self.icccmClientHints['initial_state']
+
+        if initialState == icccm.State.Iconic:
+            # The window wants to be minimized initially.
+            self.icccmState = icccm.State.Iconic
+            self.ewmhStates.add(EWMHWindowState.Hidden)
+            self.hide()
+
+        else:
+            if initialState != icccm.State.Normal:
+                self.logger.warn("Unrecognized WM_HINTS.initial_state value: %r", initialState)
+
+            # The window wants to be shown initially.
+            self.icccmState = icccm.State.Normal
+            self.ewmhStates.discard(EWMHWindowState.Hidden)
+            self.requestShow(self)
+
+        # If there's an icon window, hide it; we don't use it.
+        if self.icccmClientHints['flags']['IconWindow']:
+            self.icccmIconWindowID = self.icccmClientHints['icon_window']
+            self.logger.debug("Client specified an icon window (WM_HINTS.icon_window=%r); unmapping it.",
+                    self.icccmIconWindowID)
+
+            xpybutil.conn.core.UnmapWindow(self.icccmIconWindowID)
+
+        else:
+            self.icccmIconWindowID = xcb.NONE
+
+        self.applyTheme()
+        self.subscribeToFrameEvents()
+
+        # Get ICCCM _NET_WM_PROTOCOLS property.
+        self.protocols = cookies.icccmProtocols.reply()
+        del cookies.icccmProtocols
+
+        #TODO: Implement _NET_WM_PING!
+        #if atom('_NET_WM_PING') in self.protocols:
+        #    self.startPing()
+
+        self.initialized = True
+
+        # Flush the connection, and make sure all of our requests succeeded.
+        xpybutil.conn.flush()
+        for name, cookie in cookies._get_kwargs():
+            try:
+                cookie.check()
+            except:
+                self.logger.exception("Error while checking results of %s query!", name)
+
+        self.wm.workspaces.placeOnWorkspace(self)
+
+    def onClientMapNotify(self, event):
+        self.logger.debug("onClientMapNotify: %r (ICCCM state: %r)", event.__dict__, self.icccmState)
+
+        self.clientMapped = True
+
+        if self.viewable:
+            self.ewmhStates.discard(EWMHWindowState.Hidden)
+            self.requestShow(self)
+
+        else:
+            self.logger.warn("onClientMapNotify: We are not viewable! Hiding.")
+            self.ewmhStates.add(EWMHWindowState.Hidden)
+            self.hide()
 
     def onClientUnmapNotify(self, event):
         self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
+
+        self.clientMapped = False
+
+        if self.icccmState != icccm.State.Iconic:
+            self.icccmState = icccm.State.Withdrawn
 
         if self.frameWindowID is None:
             self.logger.warn("onClientUnmapNotify: No frame window to hide! PANIC!")
@@ -338,30 +503,17 @@ class WindowFrame(object):
 
             self.frameWindowID = None
 
-    ## Window State ####
-    def addWMState(self, state):
-        self.wm_states.append(state)
-        if self.clientWindowID is not None:
-            ewmh.set_wm_state(self.clientWindowID, self.wm_states)
-
-    def removeWMState(self, state):
-        self.wm_states.remove(state)
-        if self.clientWindowID is not None:
-            ewmh.set_wm_state(self.clientWindowID, self.wm_states)
-
     ## WM events ####
     def onGainedFocus(self):
         self.logger.debug("onGainedFocus")
-        self.focused = True
-        self.addWMState(EWMHWindowState.Focused)
+        self.ewmhStates.add(EWMHWindowState.Focused)
 
         if self.frameWindowID is not None:
             self.applyTheme()
 
     def onLostFocus(self):
         self.logger.debug("onLostFocus")
-        self.focused = False
-        self.removeWMState(EWMHWindowState.Focused)
+        self.ewmhStates.discard(EWMHWindowState.Focused)
 
         if self.frameWindowID is not None:
             self.applyTheme()
@@ -376,15 +528,7 @@ class WindowFrame(object):
             return
 
         if not self.workspace.visible:
-            # If this window is currently visible, unmap it.
-            if self.visible:
-                self.logger.debug("onWorkspaceVisibilityChanged: Hiding %r.", self)
-                try:
-                    xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID).check()
-                except:
-                    self.logger.exception("onWorkspaceVisibilityChanged: Error unmapping %r!", self)
-
-                icccm.set_wm_state(self.clientWindowID, ICCCMWindowState.Iconic, xcb.NONE)
+            self.hide()
 
     ## Properties ####
     @property
@@ -406,12 +550,78 @@ class WindowFrame(object):
     @workspace.setter
     def workspace(self, workspace):
         if self._workspace is not None:
-            self._workspace.visibilityChanged.disconnect(self.onWorkspaceVisibilityChanged)
+            try:
+                self._workspace.visibilityChanged.disconnect(self.onWorkspaceVisibilityChanged)
+            except KeyError:
+                pass
+
+        if workspace is None:
+            # Remove the window's _NET_WM_DESKTOP property.
+            #ewmh.remove_wm_desktop(self.clientWindowID)  # FIXME: xpybutil doesn't provide this!
+            xpybutil.conn.core.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
+
+            # Mark ourself as not viewable
+            self.viewable = False
+
+        else:
+            # Update the window's _NET_WM_DESKTOP property.
+            ewmh.set_wm_desktop(self.clientWindowID, workspace.index)
+
+            # Mark ourself as viewable
+            self.viewable = True
+
+        oldWorkspace = self._workspace
 
         self._workspace = workspace
 
-        self.onWorkspaceVisibilityChanged()
-        workspace.visibilityChanged.connect(self.onWorkspaceVisibilityChanged)
+        if oldWorkspace is not None:
+            # Notify our old workspace that we've left. (we do this after changing self._workspace so the old one
+            # doesn't try setting workspace to None)
+            oldWorkspace.removeWindow(self)
+
+        if workspace is not None:
+            self.onWorkspaceVisibilityChanged()
+            workspace.visibilityChanged.connect(self.onWorkspaceVisibilityChanged)
+
+    @property
+    def focused(self):
+        return EWMHWindowState.Focused in self.ewmhStates
+
+    @property
+    def icccmState(self):
+        return self._icccmState
+
+    @icccmState.setter
+    def icccmState(self, state):
+        if self._icccmState == state:
+            return
+
+        self._icccmState = state
+        self._updateICCCMState()
+
+    @property
+    def icccmIconWindowID(self):
+        return self._icccmIconWindowID
+
+    @icccmIconWindowID.setter
+    def icccmIconWindowID(self, window):
+        if self._icccmIconWindowID == window:
+            return
+
+        self._icccmIconWindowID = window
+        self._updateICCCMState()
+
+    ## Update Methods ####
+    def _updateICCCMState(self):
+        #TODO: Defer updates, so we only set WM_STATE once per event loop, even if both state and icon are updated
+        self.logger.trace("_updateICCCMState: Setting WM_STATE: state=%r, icon=%r",
+                self.icccmState, self.icccmIconWindowID)
+        icccm.set_wm_state(self.clientWindowID, self.icccmState, self.icccmIconWindowID)
+
+    def _updateEWMHState(self):
+        #TODO: Defer updates, so we only set _NET_WM_STATE once per event loop, even if both state and icon are updated
+        self.logger.trace("_updateEWMHState: Setting _NET_WM_STATE: %r", self.ewmhStates)
+        ewmh.set_wm_state(self.clientWindowID, self.ewmhStates)
 
     ## Visual Stuff ####
     def applyTheme(self):
@@ -420,7 +630,7 @@ class WindowFrame(object):
         self.wm.callWhenQueueEmpty(self.paint)
 
     def paint(self):
-        if self.frameWindowID is None or self.clientWindowID is None:
+        if self.frameWindowID is None or self.clientWindowID is None or self.icccmState == icccm.State.Withdrawn:
             # Skip painting.
             return
 

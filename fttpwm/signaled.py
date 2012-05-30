@@ -21,8 +21,21 @@ class _UpdateAction(object):
             inner.wrapped = wrapped
 
         def __call__(inner, *args, **kwargs):
+            try:
+                initialHash = hash(inner.obj)
+            except TypeError:
+                initialHash = hash(tuple(inner.obj))
+
             retval = inner.wrapped(*args, **kwargs)
-            inner.obj.updated()
+            try:
+                finalHash = hash(inner.obj)
+            except TypeError:
+                finalHash = hash(tuple(inner.obj))
+
+            # Only fire signal if our value actually changed.
+            if initialHash != finalHash:
+                inner.obj.updated()
+
             return retval
 
     def __get__(action, obj, objtype=None):
@@ -38,6 +51,26 @@ class _UpdateAction(object):
 
 
 #TODO: SignaledProperty!
+
+
+class SignaledSet(set):
+    def __init__(self, *args, **kwargs):
+        super(SignaledSet, self).__init__(*args, **kwargs)
+        self.updated = Signal()
+
+    __iand__ = _UpdateAction('__iand__')
+    __ior__ = _UpdateAction('__ior__')
+    __isub__ = _UpdateAction('__isub__')
+    __ixor__ = _UpdateAction('__ixor__')
+    add = _UpdateAction('add')
+    clear = _UpdateAction('clear')
+    difference_update = _UpdateAction('difference_update')
+    discard = _UpdateAction('discard')
+    intersection_update = _UpdateAction('intersection_update')
+    pop = _UpdateAction('pop')
+    remove = _UpdateAction('remove')
+    symmetric_difference_update = _UpdateAction('symmetric_difference_update')
+    update = _UpdateAction('update')
 
 
 class SignaledList(list):

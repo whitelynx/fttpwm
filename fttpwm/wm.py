@@ -16,7 +16,7 @@ import time
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
-from xcb.xproto import MappingNotifyEvent, MapRequestEvent
+from xcb.xproto import MappingNotifyEvent, MapRequestEvent, MapNotifyEvent
 
 import xpybutil
 import xpybutil.event
@@ -375,26 +375,26 @@ class WM(object):
             return windowID
 
     ## Individual client management ####
-    def manageWindow(self, clientWindow):
-        if clientWindow in self.windows:
-            logger.warn("manageWindow: Window %r is already in our list of clients; ignoring call.", clientWindow)
+    def manageWindow(self, clientWindowID):
+        if clientWindowID in self.windows:
+            logger.warn("manageWindow: Window %r is already in our list of clients; ignoring.", clientWindowID)
             return
 
-        logger.debug("manageWindow: Managing window %r...", clientWindow)
+        logger.debug("manageWindow: Managing window %r...", clientWindowID)
 
         cookies = []
-        cookies.append(xpybutil.conn.core.ChangeSaveSetChecked(SetMode.Insert, clientWindow))
+        cookies.append(xpybutil.conn.core.ChangeSaveSetChecked(SetMode.Insert, clientWindowID))
 
+        #FIXME: Move into WorkspaceManager.placeOnWorkspace!
         #FIXME: We should pay attention to the _NET_WM_DESKTOP value if initially set by the client, and try to put the
         # window on that desktop. If it is not set, or the specified desktop doesn't exist, then we should set it.
-        #ewmh.get_wm_desktop(clientWindow)
-        ewmh.set_wm_desktop(clientWindow, 0)
+        #ewmh.get_wm_desktop(clientWindowID)
+        ewmh.set_wm_desktop(clientWindowID, 0)
 
-        frame = WindowFrame(self, clientWindow)
+        frame = WindowFrame(self, clientWindowID)
         logger.debug("manageWindow: Created new frame: %r", frame)
 
-        self.windows[clientWindow] = frame
-        self.workspaces.placeOnWorkspace(frame)
+        self.windows[clientWindowID] = frame
 
     def unmanageWindow(self, frame):
         if frame.clientWindowID not in self.windows:
@@ -441,46 +441,51 @@ class WM(object):
         event.SendEvent(false, event.requestor, EventMask.NoEvent, replyEvent)
 
     def onMapRequest(self, event):
-        clientWindow = event.window
-        logger.debug("onMapRequest: %r", clientWindow)
+        clientWindowID = event.window
+        logger.debug("onMapRequest: %r", clientWindowID)
 
-        struts = self.getWindowStruts(clientWindow)
+        struts = self.getWindowStruts(clientWindowID)
         if struts is not None:
             logger.debug("onMapRequest: Found struts on window; skipping window management.")
 
-        elif clientWindow not in self.windows:
-            # If we don't already have a frame for this client, create one.
-            self.manageWindow(clientWindow)
+            try:
+                xpybutil.conn.core.MapWindowChecked(clientWindowID).check()
+            except:
+                logger.exception("onMapRequest: Error mapping client window %r!", clientWindowID)
 
-        try:
-            xpybutil.conn.core.MapWindowChecked(clientWindow).check()
-        except:
-            logger.exception("onMapRequest: Error mapping window %r! Not adding to visible window list.", clientWindow)
-            return
+        elif clientWindowID not in self.windows:
+            # If we don't already have a frame for this client, create one.
+            self.manageWindow(clientWindowID)
+
+        else:
+            logger.debug("manageWindow: Window %r is already in our list of clients; notifying existing frame.",
+                    clientWindowID)
+
+        self.windows[clientWindowID].onClientMapRequest()
 
     def onMapNotify(self, event):
-        clientWindow = event.window
-        logger.debug("onMapNotify: %r", clientWindow)
+        clientWindowID = event.window
+        logger.debug("onMapNotify: %r", clientWindowID)
 
-        struts = self.getWindowStruts(clientWindow)
+        struts = self.getWindowStruts(clientWindowID)
         logger.debug("Struts: %r", struts)
         if struts is not None:
             for side in 'left right top bottom'.split():
                 if struts[side] > 0:
                     logger.debug("onMapNotify: Found strut on %s side: %s", side, struts[side])
-                    self.struts[side][clientWindow] = struts[side]
+                    self.struts[side][clientWindowID] = struts[side]
 
             # Listen for UnmapNotify events so we can ditch the struts when the window unmaps.
-            xpybutil.window.listen(clientWindow, 'StructureNotify')
-            xpybutil.event.connect('UnmapNotify', clientWindow, self.onUnmapNotify)
+            xpybutil.window.listen(clientWindowID, 'StructureNotify')
+            xpybutil.event.connect('UnmapNotify', clientWindowID, self.onUnmapNotify)
 
     def onUnmapNotify(self, event):
-        clientWindow = event.window
-        #logger.debug("onUnmapNotify: %r", clientWindow)  # This is REALLY noisy.
+        clientWindowID = event.window
+        #logger.trace("onUnmapNotify: %r", clientWindowID)  # This is REALLY noisy.
 
         for side in 'left right top bottom'.split():
-            if clientWindow in self.struts[side]:
-                del self.struts[side][clientWindow]
+            if clientWindowID in self.struts[side]:
+                del self.struts[side][clientWindowID]
 
     def callEvery(self, interval, callback):
         self.timers.append(self.RecurringEvent(interval, callback))
@@ -525,14 +530,17 @@ class WM(object):
                         # Send all MapRequest events to the root window, so the WM can pick them up. (this should
                         # probably happen for all SubstructureRedirect request events)
                         w = self.root
-                    elif hasattr(e, 'window'):
-                        w = e.window
                     elif hasattr(e, 'event'):
                         w = e.event
+                    elif hasattr(e, 'window'):
+                        w = e.window
                     elif hasattr(e, 'owner'):
                         w = e.owner
                     elif hasattr(e, 'requestor'):
                         w = e.requestor
+
+                    if isinstance(e, MapNotifyEvent):
+                        logger.debug("Got MapNotifyEvent: %r; w=%r", e.__dict__, w)
 
                     key = (e.__class__, w)
                     for cb in getattr(xpybutil.event, '__callbacks').get(key, []):

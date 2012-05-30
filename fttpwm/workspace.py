@@ -276,7 +276,7 @@ class Workspace(object):
     @property
     def hasViewableFrames(self):
         for frame in self.windows.values():
-            if frame.viewable:
+            if frame.viewable and frame.initialized:
                 return True
 
         return False
@@ -285,7 +285,7 @@ class Workspace(object):
     def viewableFrames(self):
         return [frame
                 for frame in self.windows.values()
-                if frame.viewable
+                if frame.viewable and frame.initialized
                 ]
 
     @property
@@ -317,7 +317,7 @@ class Workspace(object):
         self.layout = layout
         self.arrangeWindows()
 
-    def arrangeWindows(self):
+    def arrangeWindows(self, *source):
         if not self.hasViewableFrames:
             return
 
@@ -336,16 +336,34 @@ class Workspace(object):
         self.visible = False
 
     def addWindow(self, frame):
+        if frame.clientWindowID in self.windows:
+            return
+
         self.logger.debug("addWindow: Adding window: %s", frame)
 
-        # Update the window's _NET_WM_DESKTOP property.
-        ewmh.set_wm_desktop(frame.clientWindowID, self.index)
-
-        # Mark the frame as viewable
-        frame.viewable = True
+        frame.workspace = self
 
         # Add to our collection of windows; this will trigger arrangeWindows.
         self.windows[frame.clientWindowID] = frame
 
-        # The frame will map itself if this workspace is visible.
-        frame.workspace = self
+        frame.requestShow.connect(self.arrangeWindows)
+
+    def removeWindow(self, frame):
+        self.logger.debug("removeWindow: Removing window: %s", frame)
+
+        if frame.workspace == self:
+            frame.workspace = None
+
+        try:
+            frame.requestShow.disconnect(self.arrangeWindows)
+        except KeyError:
+            pass
+
+        # Remove from our collection of windows; this will trigger arrangeWindows.
+        if frame.clientWindowID != xcb.NONE:
+            del self.windows[frame.clientWindowID]
+
+        else:
+            for k in self.windows.keys():
+                if self.windows[k] == frame:
+                    del self.windows[k]

@@ -28,7 +28,7 @@ class Floating(BaseLayout):
     """Doesn't arrange windows, leaving them where the user puts them.
 
     """
-    logger = logging.getLogger("fttpwm.layouts.Columns")
+    logger = logging.getLogger("fttpwm.layouts.Floating")
 
     def arrange(self, ws):
         frames = ws.viewableFrames
@@ -93,6 +93,7 @@ class Rows(BaseLayout):
             y += height + self.padding
 
             # Ensure all frames are visible
+            self.logger.debug("Calling frame.onShow().")
             frame.onShow()
 
         xpybutil.conn.flush()
@@ -102,7 +103,7 @@ class TabbedMaximized(BaseLayout):
     """Shows the focused window maximized, and rolls all other windows into tabs.
 
     """
-    logger = logging.getLogger("fttpwm.layouts.Columns")
+    logger = logging.getLogger("fttpwm.layouts.TabbedMaximized")
 
     def __init__(self, padding=0):
         self.padding = padding

@@ -7,7 +7,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 import logging
 
 import xcb
-from xcb.xproto import ConfigWindow, StackMode
+from xcb.xproto import Circulate, ConfigWindow, StackMode
 
 import xpybutil
 
@@ -35,9 +35,7 @@ def _onlyFloating(action):
 
                 super(OnlyFloating, self).onStartDrag(event)
 
-    else:
-        assert issubclass(ActionClass, KeyOrButtonAction)
-
+    elif issubclass(ActionClass, KeyOrButtonAction):
         class OnlyFloating(ActionClass):
             def onPress(self, event):
                 if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
@@ -45,6 +43,17 @@ def _onlyFloating(action):
                     return
 
                 super(OnlyFloating, self).onPress(event)
+
+    else:
+        assert callable(action)
+
+        class OnlyFloating(KeyOrButtonAction):
+            def onPress(self, event):
+                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
+                    self.releaseGrabAndReplay(event)
+                    return
+
+                action(event)
 
     OnlyFloating.__name__ = ActionClass.__name__.strip('_')
     return OnlyFloating()
@@ -100,6 +109,20 @@ class _RaiseWindow(KeyOrButtonAction):
         _raise(event)
 
 
+def _nextWindow(event, flush=True):
+    xpybutil.conn.core.CirculateWindow(Circulate.LowerHighest, singletons.wm.root)
+
+    if flush:
+        xpybutil.conn.flush()
+
+
+def _previousWindow(event, flush=True):
+    xpybutil.conn.core.CirculateWindow(Circulate.RaiseLowest, singletons.wm.root)
+
+    if flush:
+        xpybutil.conn.flush()
+
+
 class Floating(object):
     """Window actions for floating layouts
 
@@ -115,6 +138,10 @@ class Floating(object):
     raiseAndResizeWindow = _onlyFloating(_raiseAnd(_ResizeWindow))
 
     raiseWindow = _onlyFloating(_RaiseWindow())
+
+    nextWindow = _onlyFloating(_nextWindow)
+
+    previousWindow = _onlyFloating(_previousWindow)
 
 
 def setLayout(layoutInstance):

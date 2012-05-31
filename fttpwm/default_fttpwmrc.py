@@ -32,6 +32,8 @@ bindKeys({
         META + 'F': setLayout(Floating()),
         META + 'R': setLayout(Rows()),
         META + 'C': setLayout(Columns()),
+        META + 'tab': FloatingBindings.nextWindow,
+        META + 'Shift+tab': FloatingBindings.previousWindow,
         })
 
 bindMouse({

@@ -16,7 +16,8 @@ import time
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
-from xcb.xproto import MappingNotifyEvent, MapRequestEvent, ConfigureNotifyEvent
+from xcb.xproto import CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent
+from xcb.xproto import ConfigureNotifyEvent, MappingNotifyEvent
 
 import xpybutil
 import xpybutil.event
@@ -526,10 +527,11 @@ class WM(object):
                         # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
                         # update the stored keyboard mapping.
                         w = None
-                    elif isinstance(e, MapRequestEvent):
-                        # Send all MapRequest events to the root window, so the WM can pick them up. (this should
-                        # probably happen for all SubstructureRedirect request events)
-                        w = self.root
+                    elif isinstance(e, (CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent)):
+                        # Send all SubstructureRedirect *Request events to the parent window, which should be the
+                        # window which had the SubstructureRedirect mask set on it. (that is, if i'm reading the docs
+                        # correctly)
+                        w = e.parent
                     elif hasattr(e, 'event'):
                         w = e.event
                     elif hasattr(e, 'window'):
@@ -550,6 +552,9 @@ class WM(object):
                     #XXX: Debugging...
                     #if isinstance(e, ConfigureNotifyEvent):
                     #    logger.debug("Got ConfigureNotifyEvent: %r; w=%r; listeners: %r",
+                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
+                    #if isinstance(e, MapRequestEvent):
+                    #    logger.debug("Got MapRequestEvent: %r; w=%r; listeners: %r",
                     #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
 
                 xpybutil.conn.flush()

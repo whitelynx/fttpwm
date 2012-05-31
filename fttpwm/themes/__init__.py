@@ -55,6 +55,7 @@ class Color(object):
 
 
 class BaseTheme(object):
+    strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
     def __init__(self):
         self.currentFrame = None
 
@@ -164,35 +165,42 @@ class Default(BaseTheme):
         ctx.set_line_join(cairo.LINE_JOIN_MITER)
         ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
 
+        # Line up the context so drawing at integral coordinates is aligned with pixels.
+        ctx.save()
+        ctx.set_matrix(self.strokeMatrix)
+
         # ...highlight
-        ctx.move_to(0.5, titlebarHeight - 1.5)
-        ctx.line_to(0.5, 0.5)
-        ctx.line_to(frame.width - 1.5, 0.5)
+        ctx.move_to(0, titlebarHeight - 1)
+        ctx.line_to(0, 0)
+        ctx.line_to(frame.width - 1, 0)
         ctx.set_source_rgba(1, 1, 1, 0.3)
         ctx.stroke()
 
         # ...shadow
-        ctx.move_to(frame.width - 0.5, 1.5)
-        ctx.line_to(frame.width - 0.5, titlebarHeight - 0.5)
-        ctx.line_to(1.5, titlebarHeight - 0.5)
+        ctx.move_to(frame.width, 1)
+        ctx.line_to(frame.width, titlebarHeight)
+        ctx.line_to(1, titlebarHeight)
         ctx.set_source_rgba(0, 0, 0, 0.3)
         ctx.stroke()
 
         # Draw inner bevel
         if innerBackground is not None:
             # ...highlight
-            ctx.move_to(frame.width - 17.5, 3.5)
-            ctx.line_to(frame.width - 17.5, titlebarHeight - 1.5)
-            ctx.line_to(18.5, titlebarHeight - 1.5)
+            ctx.move_to(frame.width - 18, 3)
+            ctx.line_to(frame.width - 18, titlebarHeight - 2)
+            ctx.line_to(19, titlebarHeight - 2)
             ctx.set_source_rgba(1, 1, 1, 0.3)
             ctx.stroke()
 
             # ...shadow
-            ctx.move_to(17.5, titlebarHeight - 2.5)
-            ctx.line_to(17.5, 1.5)
-            ctx.line_to(frame.width - 18.5, 1.5)
+            ctx.move_to(17, titlebarHeight - 3)
+            ctx.line_to(17, 1)
+            ctx.line_to(frame.width - 18, 1)
             ctx.set_source_rgba(0, 0, 0, 0.3)
             ctx.stroke()
+
+            ctx.restore()
+            ctx.save()
 
             # Draw title (inner) background
             innerBGMatrix = cairo.Matrix()
@@ -203,10 +211,19 @@ class Default(BaseTheme):
                     )
             innerBGMatrix.invert()
 
-            ctx.rectangle(2 + 16, 2, frame.width - 4 - 32, titlebarHeight - 4)
             innerBackground.set_matrix(innerBGMatrix)
             ctx.set_source(innerBackground)
-            ctx.fill()
+
+        # Clip the remainder of the drawing to the title area.
+        ctx.save()
+        ctx.rectangle(2 + 16, 2, frame.width - 4 - 32, titlebarHeight - 4)
+        ctx.clip()
+
+        if innerBackground is not None:
+            # Finish painting the inner background.
+            ctx.paint()
+
+        ctx.restore()
 
         # Set up title text drawing
         ctx.set_source_rgba(*textColor)
@@ -223,6 +240,8 @@ class Default(BaseTheme):
                 (titlebarHeight - textHeight) / 2 - yBearing
                 )
         ctx.show_text(title)
+
+        ctx.restore()
 
     def paintStatusBarBackground(self, ctx, bar):
         background = self.getThemeValue('background', statusBar=True)

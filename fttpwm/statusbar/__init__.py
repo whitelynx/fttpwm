@@ -63,7 +63,7 @@ class StatusBar(object):
         self.width, self.height = singletons.wm.screenWidth, settings.theme.statusBar['height']
         self.x, self.y = 0, singletons.wm.screenHeight - self.height
 
-        # Create frame window.
+        # Create status bar window.
         self.windowAttributes = {
                 CW.OverrideRedirect: 1,
                 CW.BackPixel: singletons.wm.black,
@@ -161,7 +161,8 @@ class StatusBar(object):
                 singletons.wm.depth, self.backPixmapID, self.windowID, self.width, self.height
                 ))
 
-        surface = cairo.XCBSurface(xpybutil.conn, self.backPixmapID, singletons.wm.visual, self.width, self.height)
+        surface = cairo.XCBSurface(xpybutil.conn, self.backPixmapID, singletons.wm.visual,
+                self.width, self.height)
         context = cairo.Context(surface)
         context.set_operator(cairo.OPERATOR_OVER)
 
@@ -176,9 +177,10 @@ class StatusBar(object):
                 CW.BackPixmap: self.backPixmapID
                 })))
 
-        surface.finish()
-        xpybutil.conn.flush()
+        surface.flush()
+        self.bgPattern = cairo.SurfacePattern(surface)
 
+        xpybutil.conn.flush()
         for cookie in cookies:
             cookie.check()
 
@@ -208,11 +210,10 @@ class StatusBar(object):
         self.rightText = doText(settings.statusBarRightFormat)
         self.centerText = doText(settings.statusBarCenterFormat)
 
-        # Clear the window to the background pixmap.
-        xpybutil.conn.core.ClearAreaChecked(False, self.windowID, 0, 0, 0, 0).check()
+        self.context.set_source(self.bgPattern)
+        self.context.paint()
 
-        # Draw the status bar text.
-        self.surface.mark_dirty()
         settings.theme.paintStatusBar(self.context, self)
+
         self.surface.flush()
         xpybutil.conn.flush()

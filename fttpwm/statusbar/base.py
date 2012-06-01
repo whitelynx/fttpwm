@@ -89,7 +89,6 @@ class PixmapBackedWidget(BaseWidget):
         settings.theme.paintStatusBarWidgetBackground(self.context, self)
         self.logger.trace("Done painting status bar background.")
 
-        self.surface.flush()
         xpybutil.conn.flush()
 
         cookies.append(xpybutil.conn.core.ChangeWindowAttributesChecked(self.windowID, *convertAttributes({

@@ -56,6 +56,7 @@ class Color(object):
 
 class BaseTheme(object):
     strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
+
     def __init__(self):
         self.currentFrame = None
 
@@ -152,7 +153,10 @@ class Default(BaseTheme):
                 'background innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
                 )
 
-        # Draw titlebar background (and window border, since we're using ctx.paint instead of ctx.fill)
+        ctx.rectangle(0, 0, frame.width, titlebarHeight)
+        ctx.clip()
+
+        # Draw titlebar background
         background.set_matrix(cairo.Matrix(
                 xx=1 / float(frame.width),
                 yy=1 / float(titlebarHeight)

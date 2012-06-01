@@ -20,7 +20,6 @@ import cairo
 
 from ..bindings.layout import Floating as FloatingBindings
 from ..ewmh import EWMHAction, EWMHWindowState
-from ..icccm import ICCCMWindowState
 from ..mouse import bindMouse
 from ..signals import Signal
 from ..settings import settings

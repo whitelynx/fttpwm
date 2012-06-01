@@ -171,13 +171,6 @@ class StatusBar(object):
         self.logger.trace("Done painting status bar background.")
 
         surface.flush()
-        xpybutil.conn.flush()
-
-        cookies.append(xpybutil.conn.core.ChangeWindowAttributesChecked(self.windowID, *convertAttributes({
-                CW.BackPixmap: self.backPixmapID
-                })))
-
-        surface.flush()
         self.bgPattern = cairo.SurfacePattern(surface)
 
         xpybutil.conn.flush()

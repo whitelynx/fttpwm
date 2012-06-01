@@ -20,4 +20,4 @@ def switchWorkspace(ws):
 
 def quit(*event):
     logger.debug("Exiting.")
-    sys.exit(0)
+    singletons.wm.exit()

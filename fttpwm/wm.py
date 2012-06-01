@@ -496,9 +496,13 @@ class WM(object):
     def callWhenQueueEmpty(self, callback):
         self.whenQueueEmpty.add(callback)
 
+    def exit(self):
+        self.running = False
+
     ## Main event loop ####
     def run(self):
         logger.info("Starting main event loop.")
+        self.running = True
 
         #NOTE: This does several things that xpybutil.event.main doesn't do:
         # - It ensures that the WM gets MapRequest events, and windows get SelectionRequest when appropriate.
@@ -506,7 +510,7 @@ class WM(object):
         #   after `n` seconds.
         # - It implements callWhenQueueEmpty, which effectively runs a callback when we're idle.
         try:
-            while True:
+            while self.running:
                 #FIXME: Find a better way to do timeouts than polling and sleeping! It'd be preferable to block, if we
                 # could set a timeout on the blocking call.
                 #xpybutil.event.read(block=True)

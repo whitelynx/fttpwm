@@ -4,9 +4,10 @@ from os.path import expanduser
 from fttpwm.keyboard import bindKeys
 from fttpwm.layout import Floating, Rows, Columns
 from fttpwm.mouse import bindMouse
-from fttpwm.setroot import setWallpaper
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
+import fttpwm.resources as resources
+from fttpwm.themes.wallpaper import SVG
 from fttpwm.bindings.app import startSingle, startParallel
 from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout
 from fttpwm.bindings.wm import quit, switchWorkspace
@@ -51,10 +52,11 @@ fonts.options.set(
         subpixelOrder=fonts.subpixelOrder.default,
         )
 
+wallpaper = SVG(resources.fullPath('default-wallpaper.svg'))
+
 enableStatusBar = True
 
 # Startup
-setWallpaper()
 chdir(expanduser("~"))
 autostart = [
         startSingle('xrdb .Xresources'),

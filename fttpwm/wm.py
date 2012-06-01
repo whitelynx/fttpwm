@@ -27,6 +27,7 @@ import xpybutil.window
 
 from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
+from .setroot import setWallpaper
 from .utils import convertAttributes, findCurrentVisual
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
@@ -121,6 +122,7 @@ class WM(object):
         self.checkForOtherWMs()
         self.startManaging()
         settings.loadSettings()
+        setWallpaper()
 
         logger.info("Running autostart commands...")
         for startAction in settings.autostart:

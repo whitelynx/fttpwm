@@ -19,6 +19,7 @@ from xcb.xproto import ExposeEvent, ConfigureNotifyEvent, MapNotifyEvent, UnmapN
 import cairo
 
 import fttpwm.themes.fonts as fonts
+from fttpwm.utils import findCurrentVisual
 
 
 logger = logging.getLogger("cairo_bench")
@@ -27,16 +28,19 @@ logger = logging.getLogger("cairo_bench")
 class BenchmarkCase(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, iterations=1000, repetitions=5):
+    def __init__(self, iterations=100, repetitions=5):
         self.iterations = iterations
         self.repetitions = repetitions
 
     def run(self):
+        print repr(self.setup)
         timer = timeit.Timer(stmt=self, setup=self.setup)
 
         results = timer.repeat(self.repetitions, self.iterations)
 
         self.cleanup()
+
+        print "Results for {} repetitions of {} iterations: {}".format(self.repetitions, self.iterations, results)
 
         return results
 
@@ -52,7 +56,7 @@ class BenchmarkCase(object):
 
 
 class BaseX11Case(BenchmarkCase):
-    eventLoggingEnabled = True
+    eventLoggingEnabled = False
 
     def __init__(self, width, height, *args, **kwargs):
         self.width = width
@@ -62,12 +66,12 @@ class BaseX11Case(BenchmarkCase):
     def setup(self):
         self.conn = xcb.connect()
 
-        self.setup = self.conn.get_setup()
-        self.screen = self.setup.roots[self.conn.pref_screen]
+        self.conn_setup = self.conn.get_setup()
+        self.screen = self.conn_setup.roots[self.conn.pref_screen]
         self.root = self.screen.root
         self.depth = self.screen.root_depth
         self.visualID = self.screen.root_visual
-        self.visual = self._findCurrentVisual()
+        self.visual = findCurrentVisual(self.screen, self.depth, self.visualID)
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
@@ -79,7 +83,8 @@ class BaseX11Case(BenchmarkCase):
         self.setupWindow()
 
         # Show window.
-        self.app.core.MapWindow(self.windowID)
+        self.conn.core.MapWindow(self.windowID)
+        #self.conn.core.MapWindowChecked(self.windowID).check()
 
         self.waitFor({
                 MapNotifyEvent: self.windowID,
@@ -91,14 +96,14 @@ class BaseX11Case(BenchmarkCase):
         self.conn.disconnect()
 
     def createWindow(self):
-        self.windowID = self.generate_id()
+        self.windowID = self.conn.generate_id()
 
         attribMask = 0
         attribValues = list()
 
         attributes = {
                 CW.OverrideRedirect: 1,  # Avoid any overhead of the WM creating a frame, reparenting us, drawing, etc.
-                CW.BackPixel: self.app.black,
+                CW.BackPixel: self.black,
                 CW.EventMask: EventMask.Exposure | EventMask.PropertyChange
                     | EventMask.StructureNotify  # gives us MapNotify events
                 }
@@ -121,7 +126,8 @@ class BaseX11Case(BenchmarkCase):
         title = "{}: {}".format(__file__, self.__class__.__name__)
         self.conn.core.ChangeProperty(PropMode.Append, self.windowID, Atom.WM_NAME, Atom.STRING, 8, len(title), title)
 
-    def linearGradient(orientation, *colors):
+    def linearGradient(self, orientation, *colors):
+        logger.debug("Creating linear gradient: %r %r", orientation, colors)
         gradient = cairo.LinearGradient(*orientation)
 
         if len(colors) == 1 and isinstance(colors[0], dict):
@@ -136,16 +142,22 @@ class BaseX11Case(BenchmarkCase):
         return gradient
 
     def sync(self):
+        #logger.debug("Syncing X events...")
+        self.conn.flush()
+
         event = self.conn.poll_for_event()
         while event:
             self.eventsReceived += 1
             self.logEvent(event)
 
-            event = self.conn.wait_for_event()
+            event = self.conn.poll_for_event()
+        #logger.debug("Done syncing.")
 
     def waitFor(self, events):
-        event = self.conn.wait_for_event()
+        #logger.debug("Waiting for events: %r", events)
+        self.conn.flush()
 
+        event = self.conn.wait_for_event()
         while event:
             self.eventsReceived += 1
             self.logEvent(event)
@@ -157,6 +169,7 @@ class BaseX11Case(BenchmarkCase):
                     del events[type(event)]
 
                     if len(events) == 0:
+                        #logger.debug("Got all awaited events; returning!")
                         return
 
             event = self.conn.wait_for_event()
@@ -186,12 +199,12 @@ class BaseX11Case(BenchmarkCase):
                 })
 
 
-class RawCairoCase(BenchmarkCase):
+class RawCairoCase(BaseX11Case):
     strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
 
     def setupWindow(self):
         # Set up Cairo.
-        self.surface = cairo.XCBSurface(self.app.conn, self.windowID, self.app.visual, self.width, self.height)
+        self.surface = cairo.XCBSurface(self.conn, self.windowID, self.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
 
         self.fontOptions = cairo.FontOptions()
@@ -202,8 +215,7 @@ class RawCairoCase(BenchmarkCase):
         self.fontSlant = fonts.slant.normal
         self.fontWeight = fonts.weight.normal
         self.textColor = (1, 1, 1, 1)
-        self.background = self.linearGradient((0, 0, 0, self.height), (1, .9, 0, 1), (1, .3, 0, 1))
-        self.innerBackground = self.linearGradient((0, 0, 0, self.height), (0, 0, 0, .8), (0, 0, 0, .5))
+        self.background = self.linearGradient((0, 0, 0, 1), (1, .9, 0, 1), (1, 0, 0, 1))
         self.opacity = 1
 
         self.context.select_font_face(self.fontFace, self.fontSlant, self.fontWeight)
@@ -276,6 +288,6 @@ if __name__ == '__main__':
             "{e}36m%(name)s{e}90m:{e}m  {e}2;3m%(message)s{e}m".format(e='\033['))
 
     for case in [
-            RawCairoCase(1280, 1024)
+            RawCairoCase(800, 600)
             ]:
         case.run()

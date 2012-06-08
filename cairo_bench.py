@@ -1,8 +1,4 @@
-"""A simple Cairo/XCB sample application.
-
-To exit the program, press 'Q' or 'Esc', or left-click on any window.
-To force all windows to redraw, press 'R'.
-To create a new window, press 'N'.
+"""A simple Cairo/XCB benchmark to measure the performance of methods of rendering windows with text and gradients.
 
 """
 from abc import ABCMeta, abstractmethod
@@ -16,8 +12,7 @@ import sys
 
 import xcb
 from xcb.xproto import Atom, CW, EventMask, PropMode, WindowClass
-from xcb.xproto import ButtonPressEvent, EnterNotifyEvent, LeaveNotifyEvent, KeyPressEvent
-from xcb.xproto import ExposeEvent, ConfigureNotifyEvent, MapNotifyEvent, UnmapNotifyEvent, PropertyNotifyEvent
+from xcb.xproto import ExposeEvent, MapNotifyEvent, PropertyNotifyEvent
 
 import cairo
 
@@ -582,8 +577,8 @@ if __name__ == '__main__':
             "{e}36m%(name)s{e}90m:{e}m  {e}2;3m%(message)s{e}m".format(e='\033['))
 
     width, height = 256, 32
-    iterations = 300
-    repetitions = 10
+    iterations = 500
+    repetitions = 25
     for case in [
             Cairo_AlwaysRedraw(width, height, iterations, repetitions),
             #Cairo_XPixmapCache_XRedraw(width, height, iterations, repetitions),

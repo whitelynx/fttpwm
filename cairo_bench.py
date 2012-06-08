@@ -7,9 +7,12 @@ To create a new window, press 'N'.
 """
 from abc import ABCMeta, abstractmethod
 import logging
+import time
 import timeit
+import traceback
 import random
 import string
+import sys
 
 import xcb
 from xcb.xproto import Atom, CW, EventMask, PropMode, WindowClass
@@ -28,19 +31,22 @@ logger = logging.getLogger("cairo_bench")
 class BenchmarkCase(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, iterations=100, repetitions=5):
+    def __init__(self, iterations=20, repetitions=10):
         self.iterations = iterations
         self.repetitions = repetitions
 
     def run(self):
-        print repr(self.setup)
+        logger.debug("Setting up %s.", self.__class__.__name__)
         timer = timeit.Timer(stmt=self, setup=self.setup)
 
+        logger.debug("Running %s.", self.__class__.__name__)
         results = timer.repeat(self.repetitions, self.iterations)
 
+        logger.debug("Cleaning up %s.", self.__class__.__name__)
         self.cleanup()
 
-        print "Results for {} repetitions of {} iterations: {}".format(self.repetitions, self.iterations, results)
+        logger.debug("\033[1;32m%s:\033[0;32m Results for %s repetitions of %s iterations: \033[1;32m%r\033[m",
+                self.__class__.__name__, self.repetitions, self.iterations, results)
 
         return results
 
@@ -55,6 +61,33 @@ class BenchmarkCase(object):
         pass
 
 
+class CheckedXCalls(object):
+    checked = True
+
+    def __init__(self, proto):
+        self.__proto = proto
+        self.lastCall = None
+        self.lastStack = None
+
+    def __getattr__(self, name):
+        if self.checked:
+            checkedName = name + 'Checked'
+            if hasattr(self.__proto, checkedName):
+                name = checkedName
+
+            target = getattr(self.__proto, name)
+
+            def callit(*args, **kwargs):
+                #logger.debug("Calling %s(*%r, **%r).check()", checkedName, args, kwargs)
+                self.lastCall = "{}(*{}, **{})".format(checkedName, args, kwargs)
+                self.lastStack = traceback.extract_stack()
+                return target(*args, **kwargs).check()
+
+            return callit
+
+        return getattr(self.__proto, checkedName)
+
+
 class BaseX11Case(BenchmarkCase):
     eventLoggingEnabled = False
 
@@ -65,6 +98,7 @@ class BaseX11Case(BenchmarkCase):
 
     def setup(self):
         self.conn = xcb.connect()
+        self.core = CheckedXCalls(self.conn.core)
 
         self.conn_setup = self.conn.get_setup()
         self.screen = self.conn_setup.roots[self.conn.pref_screen]
@@ -78,35 +112,38 @@ class BaseX11Case(BenchmarkCase):
 
         self.eventsReceived = 0
 
+        #logger.debug("Calling createWindow...")
         self.createWindow()
 
+        #logger.debug("Waiting for PropertyNotifyEvent...")
+        self.waitFor({
+                PropertyNotifyEvent: self.windowID,
+                })
+
+        #logger.debug("Calling setupWindow...")
         self.setupWindow()
 
+        self.sync()
+
         # Show window.
-        self.conn.core.MapWindow(self.windowID)
-        #self.conn.core.MapWindowChecked(self.windowID).check()
+        self.core.MapWindow(self.windowID)
 
         self.waitFor({
                 MapNotifyEvent: self.windowID,
-                PropertyNotifyEvent: self.windowID,
                 ExposeEvent: self.windowID,
                 })
 
     def cleanup(self):
+        self.sync()
+        self.core.UnmapWindow(self.windowID)
+        self.core.DestroyWindow(self.windowID)
+        self.windowID = None
+        self.sync()
         self.conn.disconnect()
 
-    def createWindow(self):
-        self.windowID = self.conn.generate_id()
-
+    def convertAttributes(self, attributes):
         attribMask = 0
         attribValues = list()
-
-        attributes = {
-                CW.OverrideRedirect: 1,  # Avoid any overhead of the WM creating a frame, reparenting us, drawing, etc.
-                CW.BackPixel: self.black,
-                CW.EventMask: EventMask.Exposure | EventMask.PropertyChange
-                    | EventMask.StructureNotify  # gives us MapNotify events
-                }
 
         # Values must be sorted by CW enum value, ascending.
         # Luckily, the tuples we get from dict.iteritems will automatically sort correctly.
@@ -114,7 +151,19 @@ class BaseX11Case(BenchmarkCase):
             attribMask |= attrib
             attribValues.append(value)
 
-        self.conn.core.CreateWindow(
+        return attribMask, attribValues
+
+    def createWindow(self):
+        self.windowID = self.conn.generate_id()
+
+        attribMask, attribValues = self.convertAttributes({
+                CW.OverrideRedirect: 1,  # Avoid any overhead of the WM creating a frame, reparenting us, drawing, etc.
+                CW.BackPixel: self.black,
+                CW.EventMask: EventMask.Exposure | EventMask.PropertyChange
+                    | EventMask.StructureNotify  # gives us MapNotify events
+                })
+
+        self.core.CreateWindow(
                 self.depth,
                 self.windowID, self.root,
                 0, 0, self.width, self.height,
@@ -124,10 +173,10 @@ class BaseX11Case(BenchmarkCase):
                 )
 
         title = "{}: {}".format(__file__, self.__class__.__name__)
-        self.conn.core.ChangeProperty(PropMode.Append, self.windowID, Atom.WM_NAME, Atom.STRING, 8, len(title), title)
+        self.core.ChangeProperty(PropMode.Append, self.windowID, Atom.WM_NAME, Atom.STRING, 8, len(title), title)
 
     def linearGradient(self, orientation, *colors):
-        logger.debug("Creating linear gradient: %r %r", orientation, colors)
+        #logger.debug("Creating linear gradient: %r %r", orientation, colors)
         gradient = cairo.LinearGradient(*orientation)
 
         if len(colors) == 1 and isinstance(colors[0], dict):
@@ -142,23 +191,57 @@ class BaseX11Case(BenchmarkCase):
         return gradient
 
     def sync(self):
-        #logger.debug("Syncing X events...")
         self.conn.flush()
 
-        event = self.conn.poll_for_event()
-        while event:
+        while True:
+            try:
+                event = self.conn.poll_for_event()
+            except xcb.ProtocolException as e:
+                logger.exception("%s.sync got exception after %s!", self.__class__.__name__, self.core.lastCall)
+
+                if hasattr(e.args[0], 'bad_value'):
+                    logger.debug("Exception's bad_value: %r", e.args[0].bad_value)
+                if hasattr(e.args[0], 'major_opcode'):
+                    logger.debug("Exception's major_opcode: %r", e.args[0].major_opcode)
+                if hasattr(e.args[0], 'minor_opcode'):
+                    logger.debug("Exception's minor_opcode: %r", e.args[0].minor_opcode)
+
+                traceback.format_list(self.core.lastStack)
+                sys.exit(1)
+                break
+
+            if not event:
+                break
+
             self.eventsReceived += 1
             self.logEvent(event)
 
-            event = self.conn.poll_for_event()
-        #logger.debug("Done syncing.")
+        #logger.debug("Synced.")
 
     def waitFor(self, events):
         #logger.debug("Waiting for events: %r", events)
         self.conn.flush()
 
-        event = self.conn.wait_for_event()
-        while event:
+        while True:
+            try:
+                event = self.conn.wait_for_event()
+            except xcb.ProtocolException as e:
+                logger.exception("%s.waitFor got exception after %s!", self.__class__.__name__, self.core.lastCall)
+
+                if hasattr(e.args[0], 'bad_value'):
+                    logger.debug("Exception's bad_value: %r", e.args[0].bad_value)
+                if hasattr(e.args[0], 'major_opcode'):
+                    logger.debug("Exception's major_opcode: %r", e.args[0].major_opcode)
+                if hasattr(e.args[0], 'minor_opcode'):
+                    logger.debug("Exception's minor_opcode: %r", e.args[0].minor_opcode)
+
+                traceback.format_list(self.core.lastStack)
+                sys.exit(1)
+                break
+
+            if not event:
+                break
+
             self.eventsReceived += 1
             self.logEvent(event)
 
@@ -171,8 +254,6 @@ class BaseX11Case(BenchmarkCase):
                     if len(events) == 0:
                         #logger.debug("Got all awaited events; returning!")
                         return
-
-            event = self.conn.wait_for_event()
 
     def logEvent(self, event):
         if self.eventLoggingEnabled:
@@ -188,7 +269,7 @@ class BaseX11Case(BenchmarkCase):
 
         """
         # Make a no-op update to a property on the window, as a checkpoint.
-        self.conn.core.ChangeProperty(PropMode.Append, self.windowID, Atom.WM_NAME, Atom.STRING, 8, 0, "")
+        self.core.ChangeProperty(PropMode.Append, self.windowID, Atom.WM_NAME, Atom.STRING, 8, 0, "")
 
         # Flush the connection.
         self.conn.flush()
@@ -199,38 +280,56 @@ class BaseX11Case(BenchmarkCase):
                 })
 
 
-class RawCairoCase(BaseX11Case):
+class Cairo_AlwaysRedraw(BaseX11Case):
     strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
 
     def setupWindow(self):
+        self.setupWindowContext()
+        self.setupWindowBackground(self.context)
+        self.setupWindowText(self.context)
+
+    def setupWindowContext(self):
         # Set up Cairo.
         self.surface = cairo.XCBSurface(self.conn, self.windowID, self.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
 
-        self.fontOptions = cairo.FontOptions()
-        self.fontOptions.set_hint_metrics(cairo.HINT_METRICS_ON)
+        self.sync()
 
-        self.fontFace = "drift"
-        self.fontSize = 5
-        self.fontSlant = fonts.slant.normal
-        self.fontWeight = fonts.weight.normal
-        self.textColor = (1, 1, 1, 1)
+    def setupWindowBackground(self, context):
+        context.set_line_width(1)
+        context.set_line_join(cairo.LINE_JOIN_MITER)
+        context.set_line_cap(cairo.LINE_CAP_SQUARE)
+
         self.background = self.linearGradient((0, 0, 0, 1), (1, .9, 0, 1), (1, 0, 0, 1))
-        self.opacity = 1
 
-        self.context.select_font_face(self.fontFace, self.fontSlant, self.fontWeight)
-        self.context.set_font_options(fonts.options.fontOptions)
-        self.context.set_font_size(5)
+        self.sync()
 
-        self.context.set_line_width(1)
-        self.context.set_line_join(cairo.LINE_JOIN_MITER)
-        self.context.set_line_cap(cairo.LINE_CAP_SQUARE)
+    def setupWindowText(self, context):
+        fontOptions = cairo.FontOptions()
+        fontOptions.set_hint_metrics(cairo.HINT_METRICS_ON)
+
+        fontFace = "drift"
+        fontSlant = fonts.slant.normal
+        fontWeight = fonts.weight.normal
+
+        context.select_font_face(fontFace, fontSlant, fontWeight)
+        context.set_font_options(fontOptions)
+        context.set_font_size(5)
+
+        self.sync()
+
+    def cleanup(self):
+        self.context = None
+        self.surface.finish()
+        self.surface = None
+        super(Cairo_AlwaysRedraw, self).cleanup()
 
     def __call__(self):
-        self.paint(self.context)
-        super(RawCairoCase, self).__call__()
+        self.paintBackground(self.context)
+        self.paintText(self.context)
+        BaseX11Case.__call__(self)
 
-    def paint(self, ctx):
+    def paintBackground(self, ctx):
         # Draw titlebar background
         self.background.set_matrix(cairo.Matrix(
                 xx=1 / float(self.width),
@@ -256,13 +355,13 @@ class RawCairoCase(BaseX11Case):
         ctx.line_to(1, self.height)
         ctx.set_source_rgba(0, 0, 0, 0.3)
         ctx.stroke()
+        self.sync()
 
+    def paintText(self, ctx):
         # Clip the remainder of the drawing to the title area.
         ctx.save()
         ctx.rectangle(2 + 16, 2, self.width - 4 - 32, self.height - 4)
         ctx.clip()
-
-        ctx.restore()
 
         # Set up title text drawing
         ctx.set_source_rgba(0, 0, 0, 1)
@@ -276,6 +375,209 @@ class RawCairoCase(BaseX11Case):
                 )
         ctx.show_text(title)
 
+        ctx.restore()
+        self.sync()
+
+
+class Cairo_XPixmapCache_XRedraw(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+
+        self.pixmapID = self.conn.generate_id()
+        self.core.CreatePixmap(
+                self.depth,
+                self.pixmapID, self.windowID, self.width, self.height
+                )
+
+        pixmapSurface = cairo.XCBSurface(self.conn, self.pixmapID, self.visual, self.width, self.height)
+        pixmapContext = cairo.Context(pixmapSurface)
+        self.setupWindowBackground(pixmapContext)
+        self.setupWindowText(pixmapContext)
+
+        self.paintBackground(pixmapContext)
+        self.paintText(pixmapContext)
+
+        pixmapSurface.finish()
+        self.sync()
+
+        attribMask, attribValues = self.convertAttributes({
+                CW.BackPixmap: self.pixmapID
+                })
+        self.core.ChangeWindowAttributes(self.windowID, attribMask, attribValues)
+
+    def cleanup(self):
+        self.core.FreePixmap(self.pixmapID)
+        self.pixmapID = None
+        super(Cairo_XPixmapCache_XRedraw, self).cleanup()
+
+    def __call__(self):
+        self.core.ClearArea(False, self.windowID, 0, 0, 0, 0)
+        BaseX11Case.__call__(self)
+
+
+class Cairo_XPixmapCache_CairoRedraw(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+
+        self.pixmapID = self.conn.generate_id()
+        self.core.CreatePixmap(
+                self.depth,
+                self.pixmapID, self.windowID, self.width, self.height
+                )
+
+        self.pixmapSurface = cairo.XCBSurface(self.conn, self.pixmapID, self.visual, self.width, self.height)
+        pixmapContext = cairo.Context(self.pixmapSurface)
+        self.setupWindowBackground(pixmapContext)
+        self.setupWindowText(pixmapContext)
+
+        self.paintBackground(pixmapContext)
+        self.paintText(pixmapContext)
+
+        self.pixmapPattern = cairo.SurfacePattern(self.pixmapSurface)
+
+    def cleanup(self):
+        self.pixmapPattern = None
+        self.pixmapSurface.finish()
+        self.pixmapSurface = None
+        self.core.FreePixmap(self.pixmapID)
+        self.pixmapID = None
+        super(Cairo_XPixmapCache_CairoRedraw, self).cleanup()
+
+    def __call__(self):
+        self.context.set_source(self.pixmapPattern)
+        self.context.paint()
+        BaseX11Case.__call__(self)
+
+
+class Cairo_CairoImageCache(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+
+        self.imageSurface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.width, self.height)
+        imageContext = cairo.Context(self.imageSurface)
+        self.setupWindowBackground(imageContext)
+        self.setupWindowText(imageContext)
+
+        self.paintBackground(imageContext)
+        self.paintText(imageContext)
+
+        self.imagePattern = cairo.SurfacePattern(self.imageSurface)
+
+    def cleanup(self):
+        self.imagePattern = None
+        self.imageSurface.finish()
+        self.imageSurface = None
+        super(Cairo_CairoImageCache, self).cleanup()
+
+    def __call__(self):
+        self.context.set_source(self.imagePattern)
+        self.context.paint()
+        BaseX11Case.__call__(self)
+
+
+class Cairo_XPixmapCache_XRedraw_RedrawText(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+        self.setupWindowText(self.context)
+
+        self.pixmapID = self.conn.generate_id()
+        self.sync()
+        self.core.CreatePixmap(
+                self.depth,
+                self.pixmapID, self.windowID, self.width, self.height
+                )
+        self.sync()
+
+        pixmapSurface = cairo.XCBSurface(self.conn, self.pixmapID, self.visual, self.width, self.height)
+        self.sync()
+        pixmapContext = cairo.Context(pixmapSurface)
+        self.setupWindowBackground(pixmapContext)
+        self.sync()
+
+        self.paintBackground(pixmapContext)
+        self.sync()
+        pixmapSurface.finish()
+        self.sync()
+
+        attribMask, attribValues = self.convertAttributes({
+                CW.BackPixmap: self.pixmapID
+                })
+        self.core.ChangeWindowAttributes(self.windowID, attribMask, attribValues)
+        self.sync()
+        print "\033[1;32WOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO!\033[m"
+
+    def cleanup(self):
+        self.core.FreePixmap(self.pixmapID)
+        self.pixmapID = None
+        super(Cairo_XPixmapCache_XRedraw_RedrawText, self).cleanup()
+
+    def __call__(self):
+        self.surface.flush()
+        self.core.ClearArea(False, self.windowID, 0, 0, 0, 0)
+        self.surface.mark_dirty()
+        self.paintText(self.context)
+        BaseX11Case.__call__(self)
+
+
+class Cairo_XPixmapCache_CairoRedraw_RedrawText(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+        self.setupWindowText(self.context)
+
+        self.pixmapID = self.conn.generate_id()
+        self.core.CreatePixmap(
+                self.depth,
+                self.pixmapID, self.windowID, self.width, self.height
+                )
+
+        self.pixmapSurface = cairo.XCBSurface(self.conn, self.pixmapID, self.visual, self.width, self.height)
+        pixmapContext = cairo.Context(self.pixmapSurface)
+        self.setupWindowBackground(pixmapContext)
+
+        self.paintBackground(pixmapContext)
+
+        self.pixmapPattern = cairo.SurfacePattern(self.pixmapSurface)
+
+    def cleanup(self):
+        self.pixmapPattern = None
+        self.pixmapSurface.finish()
+        self.pixmapSurface = None
+        self.core.FreePixmap(self.pixmapID)
+        self.pixmapID = None
+        super(Cairo_XPixmapCache_CairoRedraw_RedrawText, self).cleanup()
+
+    def __call__(self):
+        self.context.set_source(self.pixmapPattern)
+        self.context.paint()
+        self.paintText(self.context)
+        BaseX11Case.__call__(self)
+
+
+class Cairo_CairoImageCache_RedrawText(Cairo_AlwaysRedraw):
+    def setupWindow(self):
+        self.setupWindowContext()
+        self.setupWindowText(self.context)
+
+        self.imageSurface = cairo.ImageSurface(cairo.FORMAT_ARGB32, self.width, self.height)
+        imageContext = cairo.Context(self.imageSurface)
+        self.setupWindowBackground(imageContext)
+
+        self.paintBackground(imageContext)
+
+        self.imagePattern = cairo.SurfacePattern(self.imageSurface)
+
+    def cleanup(self):
+        self.imagePattern = None
+        self.imageSurface.finish()
+        self.imageSurface = None
+        super(Cairo_CairoImageCache_RedrawText, self).cleanup()
+
+    def __call__(self):
+        self.context.set_source(self.imagePattern)
+        self.context.paint()
+        self.paintText(self.context)
+        BaseX11Case.__call__(self)
+
 
 if __name__ == '__main__':
     print __doc__
@@ -287,7 +589,15 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.NOTSET, format="{e}90m[{e}0;1m%(levelname)-8s{e}0;90m]{e}m "
             "{e}36m%(name)s{e}90m:{e}m  {e}2;3m%(message)s{e}m".format(e='\033['))
 
+    winSize = 256, 32
     for case in [
-            RawCairoCase(800, 600)
+            Cairo_AlwaysRedraw(*winSize),
+            Cairo_XPixmapCache_XRedraw(*winSize),
+            Cairo_XPixmapCache_XRedraw_RedrawText(*winSize),
+            Cairo_XPixmapCache_CairoRedraw(*winSize),
+            Cairo_XPixmapCache_CairoRedraw_RedrawText(*winSize),
+            Cairo_CairoImageCache(*winSize),
+            Cairo_CairoImageCache_RedrawText(*winSize),
             ]:
         case.run()
+        time.sleep(0.2)

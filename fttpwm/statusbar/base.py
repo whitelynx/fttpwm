@@ -81,12 +81,12 @@ class PixmapBackedWidget(BaseWidget):
                 ))
 
         # Set up Cairo.
-        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.windowID, singletons.wm.visual, self.width, self.height)
+        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.pixmapID, singletons.wm.visual, self.width, self.height)
         self.pixmapContext = cairo.Context(self.pixmapSurface)
         self.pixmapContext.set_operator(cairo.OPERATOR_OVER)
 
         self.logger.trace("Painting status bar background...")
-        settings.theme.paintStatusBarWidgetBackground(self.context, self)
+        settings.theme.paintStatusBarWidgetBackground(self.pixmapContext, self)
         self.logger.trace("Done painting status bar background.")
 
         xpybutil.conn.flush()

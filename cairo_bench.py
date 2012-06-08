@@ -27,11 +27,13 @@ from fttpwm.utils import findCurrentVisual
 
 logger = logging.getLogger("cairo_bench")
 
+conn = xcb.connect()
+
 
 class BenchmarkCase(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, iterations=20, repetitions=10):
+    def __init__(self, iterations=100, repetitions=20):
         self.iterations = iterations
         self.repetitions = repetitions
 
@@ -45,8 +47,10 @@ class BenchmarkCase(object):
         logger.debug("Cleaning up %s.", self.__class__.__name__)
         self.cleanup()
 
-        logger.debug("\033[1;32m%s:\033[0;32m Results for %s repetitions of %s iterations: \033[1;32m%r\033[m",
+        logger.info("\033[1;32m%s:\033[0;32m Results for %s repetitions of %s iterations: \033[1;32m%r\033[m",
                 self.__class__.__name__, self.repetitions, self.iterations, results)
+        logger.info("\033[1;32m%s:\033[0;32m Minimum repetition: \033[1;33m%r\033[m",
+                self.__class__.__name__, min(results))
 
         return results
 
@@ -79,9 +83,10 @@ class CheckedXCalls(object):
 
             def callit(*args, **kwargs):
                 #logger.debug("Calling %s(*%r, **%r).check()", checkedName, args, kwargs)
+                result = target(*args, **kwargs).check()
                 self.lastCall = "{}(*{}, **{})".format(checkedName, args, kwargs)
                 self.lastStack = traceback.extract_stack()
-                return target(*args, **kwargs).check()
+                return result
 
             return callit
 
@@ -97,7 +102,8 @@ class BaseX11Case(BenchmarkCase):
         super(BaseX11Case, self).__init__(*args, **kwargs)
 
     def setup(self):
-        self.conn = xcb.connect()
+        #self.conn = xcb.connect()
+        self.conn = conn
         self.core = CheckedXCalls(self.conn.core)
 
         self.conn_setup = self.conn.get_setup()
@@ -112,34 +118,24 @@ class BaseX11Case(BenchmarkCase):
 
         self.eventsReceived = 0
 
-        #logger.debug("Calling createWindow...")
         self.createWindow()
-
-        #logger.debug("Waiting for PropertyNotifyEvent...")
-        self.waitFor({
-                PropertyNotifyEvent: self.windowID,
-                })
-
-        #logger.debug("Calling setupWindow...")
         self.setupWindow()
-
-        self.sync()
 
         # Show window.
         self.core.MapWindow(self.windowID)
 
         self.waitFor({
+                PropertyNotifyEvent: self.windowID,
                 MapNotifyEvent: self.windowID,
                 ExposeEvent: self.windowID,
                 })
 
     def cleanup(self):
-        self.sync()
         self.core.UnmapWindow(self.windowID)
         self.core.DestroyWindow(self.windowID)
         self.windowID = None
         self.sync()
-        self.conn.disconnect()
+        #self.conn.disconnect()
 
     def convertAttributes(self, attributes):
         attribMask = 0
@@ -198,6 +194,7 @@ class BaseX11Case(BenchmarkCase):
                 event = self.conn.poll_for_event()
             except xcb.ProtocolException as e:
                 logger.exception("%s.sync got exception after %s!", self.__class__.__name__, self.core.lastCall)
+                traceback.print_stack()
 
                 if hasattr(e.args[0], 'bad_value'):
                     logger.debug("Exception's bad_value: %r", e.args[0].bad_value)
@@ -206,7 +203,10 @@ class BaseX11Case(BenchmarkCase):
                 if hasattr(e.args[0], 'minor_opcode'):
                     logger.debug("Exception's minor_opcode: %r", e.args[0].minor_opcode)
 
-                traceback.format_list(self.core.lastStack)
+                print ''.join(traceback.format_list(self.core.lastStack))
+                print dir(e), e.args, e.message
+                print dir(e.args[0])
+
                 sys.exit(1)
                 break
 
@@ -227,6 +227,7 @@ class BaseX11Case(BenchmarkCase):
                 event = self.conn.wait_for_event()
             except xcb.ProtocolException as e:
                 logger.exception("%s.waitFor got exception after %s!", self.__class__.__name__, self.core.lastCall)
+                traceback.print_stack()
 
                 if hasattr(e.args[0], 'bad_value'):
                     logger.debug("Exception's bad_value: %r", e.args[0].bad_value)
@@ -235,7 +236,10 @@ class BaseX11Case(BenchmarkCase):
                 if hasattr(e.args[0], 'minor_opcode'):
                     logger.debug("Exception's minor_opcode: %r", e.args[0].minor_opcode)
 
-                traceback.format_list(self.core.lastStack)
+                print ''.join(traceback.format_list(self.core.lastStack))
+                print dir(e), e.args, e.message
+                print dir(e.args[0])
+
                 sys.exit(1)
                 break
 
@@ -293,16 +297,12 @@ class Cairo_AlwaysRedraw(BaseX11Case):
         self.surface = cairo.XCBSurface(self.conn, self.windowID, self.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
 
-        self.sync()
-
     def setupWindowBackground(self, context):
         context.set_line_width(1)
         context.set_line_join(cairo.LINE_JOIN_MITER)
         context.set_line_cap(cairo.LINE_CAP_SQUARE)
 
         self.background = self.linearGradient((0, 0, 0, 1), (1, .9, 0, 1), (1, 0, 0, 1))
-
-        self.sync()
 
     def setupWindowText(self, context):
         fontOptions = cairo.FontOptions()
@@ -315,8 +315,6 @@ class Cairo_AlwaysRedraw(BaseX11Case):
         context.select_font_face(fontFace, fontSlant, fontWeight)
         context.set_font_options(fontOptions)
         context.set_font_size(5)
-
-        self.sync()
 
     def cleanup(self):
         self.context = None
@@ -355,7 +353,9 @@ class Cairo_AlwaysRedraw(BaseX11Case):
         ctx.line_to(1, self.height)
         ctx.set_source_rgba(0, 0, 0, 0.3)
         ctx.stroke()
-        self.sync()
+        ctx.restore()
+
+        ctx.get_group_target().flush()
 
     def paintText(self, ctx):
         # Clip the remainder of the drawing to the title area.
@@ -376,7 +376,7 @@ class Cairo_AlwaysRedraw(BaseX11Case):
         ctx.show_text(title)
 
         ctx.restore()
-        self.sync()
+        ctx.get_group_target().flush()
 
 
 class Cairo_XPixmapCache_XRedraw(Cairo_AlwaysRedraw):
@@ -395,10 +395,10 @@ class Cairo_XPixmapCache_XRedraw(Cairo_AlwaysRedraw):
         self.setupWindowText(pixmapContext)
 
         self.paintBackground(pixmapContext)
+        pixmapSurface.flush()
         self.paintText(pixmapContext)
 
         pixmapSurface.finish()
-        self.sync()
 
         attribMask, attribValues = self.convertAttributes({
                 CW.BackPixmap: self.pixmapID
@@ -481,30 +481,22 @@ class Cairo_XPixmapCache_XRedraw_RedrawText(Cairo_AlwaysRedraw):
         self.setupWindowText(self.context)
 
         self.pixmapID = self.conn.generate_id()
-        self.sync()
         self.core.CreatePixmap(
                 self.depth,
                 self.pixmapID, self.windowID, self.width, self.height
                 )
-        self.sync()
 
         pixmapSurface = cairo.XCBSurface(self.conn, self.pixmapID, self.visual, self.width, self.height)
-        self.sync()
         pixmapContext = cairo.Context(pixmapSurface)
         self.setupWindowBackground(pixmapContext)
-        self.sync()
 
         self.paintBackground(pixmapContext)
-        self.sync()
         pixmapSurface.finish()
-        self.sync()
 
         attribMask, attribValues = self.convertAttributes({
                 CW.BackPixmap: self.pixmapID
                 })
         self.core.ChangeWindowAttributes(self.windowID, attribMask, attribValues)
-        self.sync()
-        print "\033[1;32WOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO!\033[m"
 
     def cleanup(self):
         self.core.FreePixmap(self.pixmapID)
@@ -592,11 +584,11 @@ if __name__ == '__main__':
     winSize = 256, 32
     for case in [
             Cairo_AlwaysRedraw(*winSize),
-            Cairo_XPixmapCache_XRedraw(*winSize),
+            #Cairo_XPixmapCache_XRedraw(*winSize),
+            #Cairo_XPixmapCache_CairoRedraw(*winSize),
+            #Cairo_CairoImageCache(*winSize),
             Cairo_XPixmapCache_XRedraw_RedrawText(*winSize),
-            Cairo_XPixmapCache_CairoRedraw(*winSize),
             Cairo_XPixmapCache_CairoRedraw_RedrawText(*winSize),
-            Cairo_CairoImageCache(*winSize),
             Cairo_CairoImageCache_RedrawText(*winSize),
             ]:
         case.run()

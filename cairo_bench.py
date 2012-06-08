@@ -581,15 +581,17 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.NOTSET, format="{e}90m[{e}0;1m%(levelname)-8s{e}0;90m]{e}m "
             "{e}36m%(name)s{e}90m:{e}m  {e}2;3m%(message)s{e}m".format(e='\033['))
 
-    winSize = 256, 32
+    width, height = 256, 32
+    iterations = 300
+    repetitions = 10
     for case in [
-            Cairo_AlwaysRedraw(*winSize),
-            #Cairo_XPixmapCache_XRedraw(*winSize),
-            #Cairo_XPixmapCache_CairoRedraw(*winSize),
-            #Cairo_CairoImageCache(*winSize),
-            Cairo_XPixmapCache_XRedraw_RedrawText(*winSize),
-            Cairo_XPixmapCache_CairoRedraw_RedrawText(*winSize),
-            Cairo_CairoImageCache_RedrawText(*winSize),
+            Cairo_AlwaysRedraw(width, height, iterations, repetitions),
+            #Cairo_XPixmapCache_XRedraw(width, height, iterations, repetitions),
+            #Cairo_XPixmapCache_CairoRedraw(width, height, iterations, repetitions),
+            #Cairo_CairoImageCache(width, height, iterations, repetitions),
+            Cairo_XPixmapCache_XRedraw_RedrawText(width, height, iterations, repetitions),
+            Cairo_XPixmapCache_CairoRedraw_RedrawText(width, height, iterations, repetitions),
+            Cairo_CairoImageCache_RedrawText(width, height, iterations, repetitions),
             ]:
         case.run()
         time.sleep(0.2)

@@ -82,9 +82,10 @@ class WindowFrame(object):
         xpybutil.event.connect('MapNotify', self.clientWindowID, self.onClientMapNotify)
         xpybutil.event.connect('UnmapNotify', self.clientWindowID, self.onClientUnmapNotify)
         xpybutil.event.connect('DestroyNotify', self.clientWindowID, self.onClientDestroyNotify)
+        #TODO: Listen for all property changes on the client window so we can respond to changes? Actually, this should
+        # probably be handling for ClientMessage requests sent to the root instead.
 
-        xpybutil.window.listen(self.clientWindowID, 'ButtonPress', 'EnterWindow', 'Exposure', 'PropertyChange',
-                'StructureNotify')
+        xpybutil.window.listen(self.clientWindowID, 'PropertyChange', 'StructureNotify')
 
     def subscribeToFrameEvents(self):
         self.logger.info("Subscribing to frame window events.")
@@ -108,6 +109,7 @@ class WindowFrame(object):
             except:
                 self.logger.exception("Error while clearing listened events on client window %r!", self.clientWindowID)
 
+            xpybutil.event.disconnect('MapNotify', self.clientWindowID)
             xpybutil.event.disconnect('UnmapNotify', self.clientWindowID)
             xpybutil.event.disconnect('DestroyNotify', self.clientWindowID)
 
@@ -122,6 +124,7 @@ class WindowFrame(object):
             xpybutil.event.disconnect('EnterNotify', self.frameWindowID)
             xpybutil.event.disconnect('Expose', self.frameWindowID)
             xpybutil.event.disconnect('MapNotify', self.frameWindowID)
+            xpybutil.event.disconnect('UnmapNotify', self.frameWindowID)
 
     def activateBindings(self):
         pass

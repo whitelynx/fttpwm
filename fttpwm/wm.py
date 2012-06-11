@@ -6,18 +6,13 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from collections import deque
-import datetime
 import logging
-import operator
 import os
 import struct
 import sys
-import time
 
 import xcb
-from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
-from xcb.xproto import CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent
-from xcb.xproto import ConfigureNotifyEvent, MappingNotifyEvent
+from xcb.xproto import Atom, CW, EventMask, InputFocus, PropMode, SetMode
 
 import xpybutil
 import xpybutil.event
@@ -28,7 +23,7 @@ import xpybutil.window
 from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
 from .setroot import setWallpaper
-from .utils import convertAttributes, findCurrentVisual
+from .utils import convertAttributes
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
 from .signals import Signal
@@ -45,33 +40,7 @@ settings.setDefaults(
         )
 
 
-class Color(object):
-    @staticmethod
-    def float(*components):
-        return map(lambda x: int(x * 2 ** 16), components)
-
-
 class WM(object):
-    class RecurringEvent(object):
-        def __init__(self, interval, callback):
-            self.interval, self.callback = interval, callback
-            self.nextCall = datetime.datetime.now() + interval
-
-        def check(self):
-            try:
-                if datetime.datetime.now() > self.nextCall:
-                    self()
-            except StopIteration:
-                # Leave the timer queue.
-                return None
-
-            # Stay in the timer queue.
-            return self
-
-        def __call__(self):
-            self.callback()
-            self.nextCall = datetime.datetime.now() + self.interval
-
     def __init__(self):
         self.pid = os.getpid()
 
@@ -82,20 +51,6 @@ class WM(object):
 
         assert singletons.wm is None
         singletons.wm = self
-
-        self.setup = xpybutil.conn.get_setup()
-        self.screenNumber = xpybutil.conn.pref_screen
-        self.screen = self.setup.roots[self.screenNumber]
-        self.root = self.screen.root
-        self.depth = self.screen.root_depth
-        self.visualID = self.screen.root_visual
-        self.visual = findCurrentVisual(self.screen, self.depth, self.visualID)
-        self.screenWidth = self.screen.width_in_pixels
-        self.screenHeight = self.screen.height_in_pixels
-        self.colormap = self.screen.default_colormap
-
-        self.white = self.screen.white_pixel
-        self.black = self.screen.black_pixel
 
         self.windows = SignaledDict()
         self.windows.updated.connect(self.updateWindowList)
@@ -115,8 +70,9 @@ class WM(object):
                 'bottom': self.strutsBottom
                 }
 
-        self.workspaces = WorkspaceManager(self)
+        self.workspaces = WorkspaceManager()
 
+        #TODO: Move into Workspace!
         self.focusedWindow = None
 
         self.checkForOtherWMs()
@@ -171,6 +127,7 @@ class WM(object):
             return wmPartialStrut
 
         elif wmStrut is not None:
+            # Convert WM_STRUT to the equivalent WM_PARTIAL_STRUT.
             struts = {
                     'left': 0,
                     'right': 0,
@@ -188,20 +145,20 @@ class WM(object):
 
             struts.update(wmStrut)
 
+            fullSize = {
+                    'x': singletons.x.screenWidth,
+                    'y': singletons.x.screenHeight,
+                    }
+            for side, dimension in {'left': 'y', 'right': 'y', 'top': 'x', 'bottom': 'x'}.iteritems():
+                if struts[side] > 0:
+                    struts[side + '_end_' + dimension] = fullSize[dimension]
+
             return struts
-
-    def allocColor(self, color):
-        """Allocate the given color and return its XID.
-
-        `color` must be a tuple `(r, g, b)` where `r`, `g`, and `b` are between 0 and 1.
-
-        """
-        return xpybutil.conn.core.AllocColor(self.colormap, *color).reply().pixel
 
     def checkForOtherWMs(self):
         logger.debug("Checking for other window managers...")
         try:
-            xpybutil.conn.core.ChangeWindowAttributesChecked(self.root, *convertAttributes({
+            xpybutil.conn.core.ChangeWindowAttributesChecked(singletons.x.root, *convertAttributes({
                     CW.EventMask: EventMask.SubstructureRedirect
                     })).check()
         except:
@@ -211,7 +168,7 @@ class WM(object):
     def startManaging(self):
         logger.debug("startManaging: Initializing EWMH compliance.")
 
-        self.ewmhChildWindow, cookie = self.createWindow(0, 0, 1, 1,
+        self.ewmhChildWindow, cookie = singletons.x.createWindow(0, 0, 1, 1,
                 attributes={
                     CW.OverrideRedirect: 1
                     },
@@ -225,12 +182,12 @@ class WM(object):
 
         logger.debug("startManaging: Subscribing to events.")
 
-        xpybutil.event.connect('MapRequest', self.root, self.onMapRequest)
-        xpybutil.event.connect('MapNotify', self.root, self.onMapNotify)
+        xpybutil.event.connect('MapRequest', singletons.x.root, self.onMapRequest)
+        xpybutil.event.connect('MapNotify', singletons.x.root, self.onMapNotify)
 
         logger.debug("startManaging: Reticulating splines.")
 
-        xpybutil.window.listen(self.root, 'PropertyChange',
+        xpybutil.window.listen(singletons.x.root, 'PropertyChange',
                 'SubstructureRedirect', 'SubstructureNotify', 'StructureNotify')
 
     def setWMChildProps(self):
@@ -245,7 +202,7 @@ class WM(object):
             # CurrentTime here, but instead the 'time' field of a recent event, so that's what we're doing.
             xpybutil.conn.core.SetSelectionOwner(
                     self.ewmhChildWindow,
-                    atom('WM_S{}'.format(self.screenNumber)),
+                    atom('WM_S{}'.format(singletons.x.screenNumber)),
                     event.time
                     )
 
@@ -277,7 +234,7 @@ class WM(object):
             #/HACK
 
     def setRootProps(self):
-        ewmh.set_supporting_wm_check(self.root, self.ewmhChildWindow)
+        ewmh.set_supporting_wm_check(singletons.x.root, self.ewmhChildWindow)
         ewmh.set_supported([
                 # Root Window Properties (and Related Messages)
                 atom('_NET_SUPPORTED'),
@@ -334,49 +291,6 @@ class WM(object):
                 #EWMHWindowType.Utility, EWMHWindowType.Splash, EWMHWindowType.Dialog,
                 ])
 
-    def createWindow(self, x, y, width, height, attributes={}, windowID=None, parentID=None, borderWidth=0,
-            windowClass=WindowClass.InputOutput, checked=False):
-        """A convenience method to create a new window.
-
-        The major advantage of this is the ability to use a dictionary to specify window attributes; this eliminates
-        the need to figure out what order to specify values in according to the numeric values of the 'CW' or
-        'ConfigWindow' enum members you're using.
-
-        """
-        if windowID is None:
-            windowID = xpybutil.conn.generate_id()
-
-        if parentID is None:
-            parentID = self.root
-
-        attribMask = 0
-        attribValues = list()
-
-        # Values must be sorted by CW or ConfigWindow enum value, ascending.
-        # Luckily, the tuples we get from dict.iteritems will automatically sort correctly.
-        for attrib, value in sorted(attributes.iteritems()):
-            attribMask |= attrib
-            attribValues.append(value)
-
-        if checked:
-            call = xpybutil.conn.core.CreateWindowChecked
-        else:
-            call = xpybutil.conn.core.CreateWindow
-
-        cookie = call(
-                self.depth,
-                windowID, parentID,
-                x, y, width, height,
-                borderWidth, windowClass,
-                self.visualID,
-                attribMask, attribValues
-                )
-
-        if checked:
-            return windowID, cookie
-        else:
-            return windowID
-
     ## Individual client management ####
     def manageWindow(self, clientWindowID):
         if clientWindowID in self.windows:
@@ -394,7 +308,7 @@ class WM(object):
         #ewmh.get_wm_desktop(clientWindowID)
         ewmh.set_wm_desktop(clientWindowID, 0)
 
-        frame = WindowFrame(self, clientWindowID)
+        frame = WindowFrame(clientWindowID)
         logger.debug("manageWindow: Created new frame: %r", frame)
 
         self.windows[clientWindowID] = frame
@@ -441,7 +355,7 @@ class WM(object):
         mask = EventMask.NoEvent
         replyEvent = SelectionNotifyEvent.build()
         xpybutil.event.send_event(event.requestor, mask, replyEvent)
-        event.SendEvent(false, event.requestor, EventMask.NoEvent, replyEvent)
+        event.SendEvent(False, event.requestor, EventMask.NoEvent, replyEvent)
 
     def onMapRequest(self, event):
         clientWindowID = event.window
@@ -489,89 +403,3 @@ class WM(object):
         for side in 'left right top bottom'.split():
             if clientWindowID in self.struts[side]:
                 del self.struts[side][clientWindowID]
-
-    def callEvery(self, interval, callback):
-        self.timers.append(self.RecurringEvent(interval, callback))
-
-    def callWhenQueueEmpty(self, callback):
-        self.whenQueueEmpty.add(callback)
-
-    def exit(self):
-        self.running = False
-
-    ## Main event loop ####
-    def run(self):
-        logger.info("Starting main event loop.")
-        self.running = True
-
-        #NOTE: This does several things that xpybutil.event.main doesn't do:
-        # - It ensures that the WM gets MapRequest events, and windows get SelectionRequest when appropriate.
-        # - It implements crude timers so various things can register a callback to happen every `n` seconds, or once
-        #   after `n` seconds.
-        # - It implements callWhenQueueEmpty, which effectively runs a callback when we're idle.
-        try:
-            while self.running:
-                #FIXME: Find a better way to do timeouts than polling and sleeping! It'd be preferable to block, if we
-                # could set a timeout on the blocking call.
-                #xpybutil.event.read(block=True)
-                xpybutil.event.read(block=False)
-
-                # Check if there are any waiting events.
-                if len(xpybutil.event.peek()) == 0:
-                    # Run all the callbacks in whenQueueEmpty, and clear it.
-                    for callback in self.whenQueueEmpty:
-                        callback()
-
-                    self.whenQueueEmpty.clear()
-
-                    #XXX: HACK: Sleep 10ms, so we can check for wakeups at least that often.
-                    time.sleep(0.01)
-
-                for e in xpybutil.event.queue():
-                    w = None
-                    if isinstance(e, MappingNotifyEvent):
-                        # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
-                        # update the stored keyboard mapping.
-                        w = None
-                    elif isinstance(e, (CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent)):
-                        # Send all SubstructureRedirect *Request events to the parent window, which should be the
-                        # window which had the SubstructureRedirect mask set on it. (that is, if i'm reading the docs
-                        # correctly)
-                        w = e.parent
-                    elif hasattr(e, 'event'):
-                        w = e.event
-                    elif hasattr(e, 'window'):
-                        w = e.window
-                    elif hasattr(e, 'owner'):
-                        w = e.owner
-                    elif hasattr(e, 'requestor'):
-                        w = e.requestor
-
-                    key = (e.__class__, w)
-                    for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
-                        try:
-                            cb(e)
-                        except Exception:
-                            logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
-                                    cb, e.__class__, w)
-
-                    #XXX: Debugging...
-                    #if isinstance(e, ConfigureNotifyEvent):
-                    #    logger.debug("Got ConfigureNotifyEvent: %r; w=%r; listeners: %r",
-                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
-                    #if isinstance(e, MapRequestEvent):
-                    #    logger.debug("Got MapRequestEvent: %r; w=%r; listeners: %r",
-                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
-
-                xpybutil.conn.flush()
-
-                for timer in self.timers:
-                    # If the timer's 'check' method returns None, remove it from the queue.
-                    if timer.check() is None:
-                        self.timers.remove(timer)
-
-        except xcb.Exception:
-            logger.exception("Error in main event loop! Exiting with error status.")
-            sys.exit(1)
-
-        logger.info("Event loop terminated; shutting down normally.")

@@ -32,6 +32,9 @@ UINT32_MAX = 2 ** 32
 
 settings.setDefaults(
         enableStatusBar=False,
+        statusBarContents=[
+            'FTTPWM',
+            ],
         statusBarLeftFormat=lambda:
             u'{wbcs}{workspacesBeforeCurrent} <{currentWorkspace}> {workspacesAfterCurrent}{wacs}'.format(
                 currentWorkspace=singletons.wm.workspaces.current.name,
@@ -60,15 +63,15 @@ class StatusBar(object):
         self.logger = logging.getLogger("fttpwm.statusbar.{}".format(self.windowID))
         self.logger.info("Setting up status bar.")
 
-        self.width, self.height = singletons.wm.screenWidth, settings.theme.statusBar['height']
-        self.x, self.y = 0, singletons.wm.screenHeight - self.height
+        self.width, self.height = singletons.x.screenWidth, settings.theme.statusBar['height']
+        self.x, self.y = 0, singletons.x.screenHeight - self.height
 
         # Create status bar window.
         self.windowAttributes = {
                 CW.OverrideRedirect: 1,
-                CW.BackPixel: singletons.wm.black,
+                CW.BackPixel: singletons.x.black,
                 }
-        self.windowID, createWindowCookie = singletons.wm.createWindow(
+        self.windowID, createWindowCookie = singletons.x.createWindow(
                 self.x, self.y, self.width, self.height,
                 attributes=self.windowAttributes, windowID=self.windowID, checked=True
                 )
@@ -84,7 +87,7 @@ class StatusBar(object):
                 )
 
         # Set up Cairo.
-        self.surface = cairo.XCBSurface(xpybutil.conn, self.windowID, singletons.wm.visual, self.width, self.height)
+        self.surface = cairo.XCBSurface(xpybutil.conn, self.windowID, singletons.x.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
         self.context.set_operator(cairo.OPERATOR_OVER)
 
@@ -101,7 +104,7 @@ class StatusBar(object):
         except:
             self.logger.exception("Error mapping!")
 
-        singletons.wm.callEvery(timedelta(seconds=1), self.paint)
+        singletons.x.callEvery(timedelta(seconds=1), self.paint)
         singletons.wm.workspaces.currentChanged.connect(self.paint)
 
     def subscribeToEvents(self):
@@ -158,10 +161,10 @@ class StatusBar(object):
         self.backPixmapID = xpybutil.conn.generate_id()
 
         cookies.append(xpybutil.conn.core.CreatePixmapChecked(
-                singletons.wm.depth, self.backPixmapID, self.windowID, self.width, self.height
+                singletons.x.depth, self.backPixmapID, self.windowID, self.width, self.height
                 ))
 
-        surface = cairo.XCBSurface(xpybutil.conn, self.backPixmapID, singletons.wm.visual,
+        surface = cairo.XCBSurface(xpybutil.conn, self.backPixmapID, singletons.x.visual,
                 self.width, self.height)
         context = cairo.Context(surface)
         context.set_operator(cairo.OPERATOR_OVER)

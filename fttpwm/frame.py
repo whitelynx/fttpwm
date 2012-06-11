@@ -26,6 +26,7 @@ from .signaled import SignaledSet
 from .settings import settings
 from .themes import Default, fonts
 from .utils import convertAttributes
+from . import singletons
 
 
 UINT32_MAX = 2 ** 32
@@ -47,8 +48,7 @@ class WindowFrame(object):
     """A Cairo-backed titlebar and window frame.
 
     """
-    def __init__(self, wm, clientWindowID):
-        self.wm = wm
+    def __init__(self, clientWindowID):
         self.frameWindowID = xcb.NONE
         self.clientWindowID = clientWindowID
 
@@ -247,24 +247,24 @@ class WindowFrame(object):
                 })
         xpybutil.conn.core.ConfigureWindow(self.clientWindowID, *attributes)
 
-        self.wm.callWhenQueueEmpty(self.paint)
+        singletons.x.callWhenQueueEmpty(self.paint)
 
     def onEnterNotify(self, event):
         self.logger.trace("onEnterNotify: %r", event.__dict__)
 
         if not self.focused:
-            self.wm.focusWindow(self)
+            singletons.wm.focusWindow(self)
 
     def onExpose(self, event):
         # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
         # collapse such series into a single call to paint() so we don't get extraneous redraws.
         if event.count == 0:
-            self.wm.callWhenQueueEmpty(self.paint)
+            singletons.x.callWhenQueueEmpty(self.paint)
 
     def onMapNotify(self, event):
         self.frameMapped = True
 
-        self.wm.callWhenQueueEmpty(self.paint)
+        singletons.x.callWhenQueueEmpty(self.paint)
 
     def onUnmapNotify(self, event):
         self.frameMapped = False
@@ -312,7 +312,7 @@ class WindowFrame(object):
             self.frameWindowID = xpybutil.conn.generate_id()
             self.frameWindowAttributes = {
                     CW.OverrideRedirect: 1,
-                    CW.BackPixel: self.wm.black,
+                    CW.BackPixel: singletons.x.black,
                     }
 
             newLoggerName = "fttpwm.frame.WindowFrame.{}(client:{})".format(
@@ -328,13 +328,13 @@ class WindowFrame(object):
             self.x, self.y, self.width, self.height = geom.x, geom.y, geom.width, geom.height
 
             # Create the frame window.
-            self.frameWindowID, cookies.createWindow = self.wm.createWindow(
+            self.frameWindowID, cookies.createWindow = singletons.x.createWindow(
                     self.x, self.y, self.width, self.height,
                     attributes=self.frameWindowAttributes, windowID=self.frameWindowID, checked=True
                     )
 
             # Set up Cairo.
-            self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, self.wm.visual, self.width, self.height)
+            self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, singletons.x.visual, self.width, self.height)
             self.context = cairo.Context(self.surface)
 
             self.activateBindings()
@@ -455,7 +455,7 @@ class WindowFrame(object):
             except:
                 self.logger.exception("Error while checking results of %s query!", name)
 
-        self.wm.workspaces.placeOnWorkspace(self)
+        singletons.wm.workspaces.placeOnWorkspace(self)
 
     def onClientMapNotify(self, event):
         self.logger.debug("onClientMapNotify: %r (ICCCM state: %r)", event.__dict__, self.icccmState)
@@ -493,7 +493,7 @@ class WindowFrame(object):
 
         if self.clientWindowID is not None:
             try:
-                self.wm.unmanageWindow(self)
+                singletons.wm.unmanageWindow(self)
             except:
                 self.logger.exception("onClientDestroyNotify: Error unmanaging client window %r!", self.clientWindowID)
 
@@ -634,7 +634,7 @@ class WindowFrame(object):
     def applyTheme(self):
         settings.theme.apply(self)
 
-        self.wm.callWhenQueueEmpty(self.paint)
+        singletons.x.callWhenQueueEmpty(self.paint)
 
     def paint(self):
         if not self.initialized or self.frameWindowID is None or self.clientWindowID is None \

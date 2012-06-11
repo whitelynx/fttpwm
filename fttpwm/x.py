@@ -43,12 +43,6 @@ settings.setDefaults(
         )
 
 
-class Color(object):
-    @staticmethod
-    def float(*components):
-        return map(lambda x: int(x * 2 ** 16), components)
-
-
 class XConnection(object):
     class RecurringEvent(object):
         def __init__(self, interval, callback):
@@ -71,8 +65,6 @@ class XConnection(object):
             self.nextCall = datetime.datetime.now() + self.interval
 
     def __init__(self):
-        self.pid = os.getpid()
-
         self.startupFinished = False
         self.onStartup = Signal()
         self.timers = deque()
@@ -80,6 +72,8 @@ class XConnection(object):
 
         assert singletons.x is None
         singletons.x = self
+
+        self.conn = xpybutil.conn
 
         self.setup = xpybutil.conn.get_setup()
         self.screenNumber = xpybutil.conn.pref_screen
@@ -94,6 +88,15 @@ class XConnection(object):
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
+
+    def __getattr__(self, name):
+        """Get an attribute from the X connection.
+
+        Simplifies things so you don't have to do `singletons.x.conn.core.func()`; instead, you just call
+        `singletons.x.core.func()`.
+
+        """
+        return getattr(self.conn, name)
 
     def allocColor(self, color):
         """Allocate the given color and return its XID.

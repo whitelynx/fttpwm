@@ -131,6 +131,10 @@ logging.config.dictConfig(logConfig)
 logger = logging.getLogger("fttpwm")
 
 
+from .x import XConnection
 from .wm import WM
 
-WM().run()
+
+x = XConnection()
+WM()
+x.run()

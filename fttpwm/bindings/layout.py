@@ -110,14 +110,14 @@ class _RaiseWindow(KeyOrButtonAction):
 
 
 def _nextWindow(event, flush=True):
-    xpybutil.conn.core.CirculateWindow(Circulate.LowerHighest, singletons.wm.root)
+    xpybutil.conn.core.CirculateWindow(Circulate.LowerHighest, singletons.x.root)
 
     if flush:
         xpybutil.conn.flush()
 
 
 def _previousWindow(event, flush=True):
-    xpybutil.conn.core.CirculateWindow(Circulate.RaiseLowest, singletons.wm.root)
+    xpybutil.conn.core.CirculateWindow(Circulate.RaiseLowest, singletons.x.root)
 
     if flush:
         xpybutil.conn.flush()

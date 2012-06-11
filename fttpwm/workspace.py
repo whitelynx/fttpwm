@@ -29,6 +29,7 @@ from .frame import WindowFrame
 from .signals import Signal
 from .signaled import SignaledList, SignaledDict, SignaledOrderedDict
 from .layout import Rows
+from . import singletons
 
 
 logger = logging.getLogger("fttpwm.workspace")
@@ -59,8 +60,7 @@ settings.setDefaults(
 
 
 class WorkspaceManager(object):
-    def __init__(self, wm):
-        self.wm = wm
+    def __init__(self):
         self.workspaces = SignaledList()
         self.workspacesByName = SignaledDict()
         self.currentChanged = Signal()
@@ -70,10 +70,10 @@ class WorkspaceManager(object):
         self.baseWorkAreaUpdated.connect(self.updateWorkAreaHint)
         self.baseWorkAreaUpdated.connect(self.arrangeGlobalDocks)
 
-        wm.strutsLeft.updated.connect(self.baseWorkAreaUpdated)
-        wm.strutsRight.updated.connect(self.baseWorkAreaUpdated)
-        wm.strutsTop.updated.connect(self.baseWorkAreaUpdated)
-        wm.strutsBottom.updated.connect(self.baseWorkAreaUpdated)
+        singletons.wm.strutsLeft.updated.connect(self.baseWorkAreaUpdated)
+        singletons.wm.strutsRight.updated.connect(self.baseWorkAreaUpdated)
+        singletons.wm.strutsTop.updated.connect(self.baseWorkAreaUpdated)
+        singletons.wm.strutsBottom.updated.connect(self.baseWorkAreaUpdated)
 
         self.createConfiguredWorkspaces()
         self.setEWMHProps()
@@ -120,7 +120,7 @@ class WorkspaceManager(object):
     def setEWMHProps(self):
         ewmh.set_desktop_names(ws.name.encode('utf8') for ws in self.workspaces)
         ewmh.set_number_of_desktops(len(self.workspaces))
-        ewmh.set_desktop_geometry(self.wm.screenWidth, self.wm.screenHeight)
+        ewmh.set_desktop_geometry(singletons.x.screenWidth, singletons.x.screenHeight)
 
         # We don't support large desktops, so our viewport is always at 0, 0.
         ewmh.set_desktop_viewport([{'x': 0, 'y': 0}] * len(self.workspaces))
@@ -137,19 +137,19 @@ class WorkspaceManager(object):
 
     @property
     def globalWorkAreaX(self):
-        return self.wm.strutsLeftSize
+        return singletons.wm.strutsLeftSize
 
     @property
     def globalWorkAreaY(self):
-        return self.wm.strutsTopSize
+        return singletons.wm.strutsTopSize
 
     @property
     def globalWorkAreaWidth(self):
-        return self.wm.screenWidth - self.wm.strutsLeftSize - self.wm.strutsRightSize
+        return singletons.x.screenWidth - singletons.wm.strutsLeftSize - singletons.wm.strutsRightSize
 
     @property
     def globalWorkAreaHeight(self):
-        return self.wm.screenHeight - self.wm.strutsTopSize - self.wm.strutsBottomSize
+        return singletons.x.screenHeight - singletons.wm.strutsTopSize - singletons.wm.strutsBottomSize
 
     def arrangeGlobalDocks(self):
         #TODO: Rearrange any global (non-workspace-specific / "pinned") dock windows as needed!

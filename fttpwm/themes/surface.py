@@ -30,11 +30,11 @@ class CacheableCairoSurface(object):
             # Create a basic window for the target.
             self.windowAttribs = {
                     CW.OverrideRedirect: 1,
-                    CW.BackPixel: singletons.wm.black,
+                    CW.BackPixel: singletons.x.black,
                     CW.EventMask: EventMask.Exposure | EventMask.PropertyChange
                         | EventMask.StructureNotify  # gives us MapNotify events
                     }
-            targetDrawableID = singletons.wm.createWindow(0, 0, self.width, self.height, attributes=self.windowAttribs)
+            targetDrawableID = singletons.x.createWindow(0, 0, self.width, self.height, attributes=self.windowAttribs)
             self.cleanUpTarget = True
 
             xpybutil.window.listen(targetDrawableID, 'ButtonPress', 'Exposure', 'PropertyChange', 'StructureNotify')
@@ -123,7 +123,7 @@ class NoCachingSurface(CacheableCairoSurface):
     def onSetup(self):
         # Set up Cairo context for the target window.
         self.surface = cairo.XCBSurface(
-                xpybutil.conn, self.targetDrawableID, singletons.wm.visual, self.width, self.height)
+                xpybutil.conn, self.targetDrawableID, singletons.x.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
 
         self.setupBackground(self.context)
@@ -181,10 +181,10 @@ class XPixmapSurface(CacheableCairoSurface):
         # Set up background pixmap.
         self.backgroundPixmapID = self.conn.generate_id()
         xpybutil.conn.core.CreatePixmap(
-                singletons.wm.depth, self.backgroundPixmapID, self.targetDrawableID, width, height)
+                singletons.x.depth, self.backgroundPixmapID, self.targetDrawableID, width, height)
 
         self.backgroundSurface = cairo.XCBSurface(
-                xpybutil.conn, self.backgroundPixmapID, singletons.wm.visual, width, height)
+                xpybutil.conn, self.backgroundPixmapID, singletons.x.visual, width, height)
         self.backgroundContext = cairo.Context(self.backgroundSurface)
 
         self.setupBackground(self.backgroundContext)
@@ -198,7 +198,7 @@ class XPixmapSurface(CacheableCairoSurface):
         xpybutil.conn.core.CreatePixmap(self.depth, self.combinedPixmapID, self.targetDrawableID, width, height)
 
         self.combinedSurface = cairo.XCBSurface(
-                xpybutil.conn, self.combinedPixmapID, singletons.wm.visual, width, height)
+                xpybutil.conn, self.combinedPixmapID, singletons.x.visual, width, height)
         self.combinedContext = cairo.Context(self.combinedSurface)
 
         self.setupForeground(self.combinedContext)
@@ -261,7 +261,7 @@ class CairoPixmapSurface(XPixmapSurface):
     def onSetup(self):
         # Set up Cairo context for the target window.
         self.surface = cairo.XCBSurface(
-                xpybutil.conn, self.targetDrawableID, singletons.wm.visual, self.width, self.height)
+                xpybutil.conn, self.targetDrawableID, singletons.x.visual, self.width, self.height)
         self.context = cairo.Context(self.surface)
         self.setupPixmaps(self.width, self.height)
         self.paint()

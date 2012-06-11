@@ -50,7 +50,7 @@ class BaseWidget(object):
         if self.surface is not None:
             self.surface.finish()
 
-        self.surface = cairo.XCBSurface(xpybutil.conn, statusBar.windowID, singletons.wm.visual,
+        self.surface = cairo.XCBSurface(xpybutil.conn, statusBar.windowID, singletons.x.visual,
                 statusBar.width, statusBar.height)
         self.context = cairo.Context(self.surface)
         self.context.set_operator(cairo.OPERATOR_OVER)
@@ -77,11 +77,11 @@ class PixmapBackedWidget(BaseWidget):
         self.pixmapID = xpybutil.conn.generate_id()
 
         cookies.append(xpybutil.conn.core.CreatePixmapChecked(
-                singletons.wm.depth, self.pixmapID, self.statusBar.windowID, width, height
+                singletons.x.depth, self.pixmapID, self.statusBar.windowID, width, height
                 ))
 
         # Set up Cairo.
-        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.pixmapID, singletons.wm.visual, self.width, self.height)
+        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.pixmapID, singletons.x.visual, self.width, self.height)
         self.pixmapContext = cairo.Context(self.pixmapSurface)
         self.pixmapContext.set_operator(cairo.OPERATOR_OVER)
 

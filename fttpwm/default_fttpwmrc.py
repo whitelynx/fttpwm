@@ -65,6 +65,7 @@ autostart = [
             urxvtd -q -o
 
             # tiling window manager notification daemon
+            # https://github.com/sboli/twmn
             twmnd
 
             # cairo-compmgr; pretty much just transparency iirc

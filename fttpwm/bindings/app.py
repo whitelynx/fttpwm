@@ -65,6 +65,7 @@ def startParallel(commands, **kwargs):
                 pids.append(subprocess.Popen(command, **kwargs).pid)
             except:
                 logger.exception("Error while starting command %r!", command)
+                pids.append(None)
 
         logger.debug("Command set started; PIDs: %r", pids)
 

@@ -14,6 +14,11 @@ def getEntries():
             yield entry
 
 
+def execute():
+    for entry in getEntries():
+        entry.execute()
+
+
 if __name__ == '__main__':
     for entry in getEntries():
         print list(entry.getExec([]))

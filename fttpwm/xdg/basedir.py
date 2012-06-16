@@ -4,8 +4,9 @@ This module aims to implement the XDG Base Directory Specification version 0.8, 
 http://standards.freedesktop.org/basedir-spec/basedir-spec-0.8.html (apparently mislabeled as 0.7 in that page)
 
 """
+import glob
 import os
-from os.path import dirname, expanduser, isdir, isfile, join
+from os.path import dirname, expanduser, isdir, isfile, join, relpath
 
 
 class FileFactory(object):
@@ -61,7 +62,7 @@ class BaseDirManager(object):
 
         return filenames
 
-    def getFiles(self, subdir):
+    def getFiles(self, subdir, pattern=None):
         """Find the names of all existing files under the given subdirectory in the configured base directories.
 
         Base directories are searched in order of importance.
@@ -70,7 +71,11 @@ class BaseDirManager(object):
         filenames = set()
         for dir in [self.home] + self.dirs:
             try:
-                filenames.update(os.listdir(join(dir, subdir)))
+                if pattern is not None:
+                    filenames.update(relpath(absPath, dir)
+                            for absPath in glob.glob(join(dir, subdir, pattern)))
+                else:
+                    filenames.update(os.listdir(join(dir, subdir)))
             except:
                 pass
 

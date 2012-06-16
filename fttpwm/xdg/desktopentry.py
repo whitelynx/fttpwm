@@ -5,10 +5,13 @@ http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-1.1.html
 
 """
 from ConfigParser import RawConfigParser, NoSectionError, NoOptionError
+import logging
 import re
 import shlex
 import subprocess
 
+
+logger = logging.getLogger("fttpwm.xdg.desktopentry")
 
 environmentName = "fttpwm"
 
@@ -27,13 +30,13 @@ class DesktopEntry(object):
             self.filename = file
             self.parser.read(file)
 
-        self.defaultGroup = DesktopEntryGroup(self.parser, u'Desktop Entry')
+        self.defaultGroup = DesktopEntryGroup(self, u'Desktop Entry')
 
     def __getattr__(self, attr):
         return getattr(self.defaultGroup, attr)
 
     def __getitem__(self, name):
-        return ActionGroup(self.parser, name)
+        return ActionGroup(self, name)
 
 
 class StringTransform(object):
@@ -168,8 +171,9 @@ class _FieldCodeReplacement(object):
 
 
 class Group(object):
-    def __init__(self, parser, groupName):
-        self.parser = parser
+    def __init__(self, entry, groupName):
+        self.entry = entry
+        self.parser = entry.parser
         self.groupName = groupName
 
     def value(self, key):
@@ -333,7 +337,9 @@ class ActionGroup(Group):
     def execute(self, *filesOrURLs, **kwargs):
         assert self.Type == u'Application'
         args = list(self.getExec(filesOrURLs))
-        subprocess.Popen(args, bufsize=-1, **kwargs)
+        kwargs.setdefault('bufsize', -1)
+        logger.debug("Starting desktop entry %r.", self.entry.filename)
+        subprocess.Popen(args, **kwargs)
 
 
 class DesktopEntryGroup(ActionGroup):

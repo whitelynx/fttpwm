@@ -11,6 +11,7 @@ from fttpwm.themes.wallpaper import SVG
 from fttpwm.bindings.app import startSingle, startParallel
 from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout
 from fttpwm.bindings.wm import quit, switchWorkspace
+import fttpwm.xdg.autostart as xdg_autostart
 
 
 META = 'Mod4+'
@@ -63,6 +64,9 @@ autostart = [
         startParallel('''
             urxvtd -q -o
 
+            # tiling window manager notification daemon
+            twmnd
+
             # cairo-compmgr; pretty much just transparency iirc
             #cairo-compmgr
 
@@ -72,4 +76,5 @@ autostart = [
             # xcompmgr with no shadows
             xcompmgr -n
             '''),
+        xdg_autostart.execute,
         ]

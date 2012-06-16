@@ -6,7 +6,7 @@ import xcb
 import xpybutil
 import xpybutil.keybind as keybind
 
-from .bindings import processBinding
+from .bindings import processBinding, EventClassFilter
 from .settings import settings
 
 
@@ -30,12 +30,14 @@ def bindKeys(bindings):
 
         if binding.onPress is not None:
             logger.debug("Binding KeyPress event to onPress (%r)", binding.onPress)
-            if not keybind.bind_global_key('KeyPress', keyString, binding.onPress):
+            if not keybind.bind_global_key('KeyPress', keyString,
+                    EventClassFilter(xcb.xproto.KeyPressEvent, binding.onPress)):
                 logger.error("Couldn't bind key press %s to %r!", keyString, binding.onPress)
 
         if binding.onRelease is not None:
             logger.debug("Binding KeyRelease event to onRelease (%r)", binding.onRelease)
-            if not keybind.bind_global_key('KeyRelease', keyString, binding.onRelease):
+            if not keybind.bind_global_key('KeyRelease', keyString,
+                    EventClassFilter(xcb.xproto.KeyReleaseEvent, binding.onRelease)):
                 logger.error("Couldn't bind key release %s to %r!", keyString, binding.onRelease)
 
 

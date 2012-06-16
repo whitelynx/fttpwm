@@ -10,15 +10,22 @@ import shlex
 import subprocess
 
 
+environmentName = "fttpwm"
+
+
 class DesktopEntry(object):
-    def __init__(self, filename):
-        self.filename = filename
+    def __init__(self, file):
         self.parser = RawConfigParser()
 
         # Desktop entry files must be case-sensitive!
         self.parser.optionxform = str
 
-        self.parser.read(filename)
+        if hasattr(file, 'readline'):
+            self.filename = file.name
+            self.parser.readfp(file)
+        else:
+            self.filename = file
+            self.parser.read(file)
 
         self.defaultGroup = DesktopEntryGroup(self.parser, u'Desktop Entry')
 
@@ -244,6 +251,20 @@ class ActionGroup(Group):
         return self.stringList(u'NotShowIn')
 
     @property
+    def isEnabled(self):
+        try:
+            return environmentName in self.OnlyShowIn
+        except (NoSectionError, NoOptionError):
+            try:
+                return environmentName not in self.NotShowIn
+            except (NoSectionError, NoOptionError):
+                return True
+
+    @property
+    def isShown(self):
+        return self.isEnabled
+
+    @property
     def Exec(self):
         """Program to execute, possibly with arguments.
 
@@ -403,6 +424,24 @@ class DesktopEntryGroup(ActionGroup):
 
         """
         return self.boolean(u'Hidden')
+
+    @property
+    def isEnabled(self):
+        try:
+            hidden = self.Hidden
+        except (NoSectionError, NoOptionError):
+            hidden = False
+
+        return super(DesktopEntryGroup, self).isEnabled and not hidden
+
+    @property
+    def isShown(self):
+        try:
+            noDisplay = self.NoDisplay
+        except (NoSectionError, NoOptionError):
+            noDisplay = False
+
+        return self.isEnabled and not noDisplay
 
     @property
     def TryExec(self):

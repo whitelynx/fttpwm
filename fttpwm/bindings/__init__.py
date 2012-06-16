@@ -61,3 +61,13 @@ class FilteredHandler(object):
             return
 
         return self.handler(event)
+
+
+class EventClassFilter(object):
+    def __init__(self, expectedClass, handler):
+        self.expectedClass = expectedClass
+        self.handler = handler
+
+    def __call__(self, event):
+        if isinstance(event, self.expectedClass):
+            self.handler(event)

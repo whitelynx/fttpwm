@@ -19,6 +19,10 @@ from .. import singletons
 
 logger = logging.getLogger("fttpwm.bindings.layout")
 
+#FIXME: This module needs to be simplified like crazy! We should be able to just bind things with lists of actions
+# instead of requiring a separate 'combine' function, and most of these should be less than half the size they
+# currently are.
+
 
 ## Window Action Implementations for Floating Layouts ####
 def _onlyFloating(action):
@@ -64,6 +68,7 @@ class _MoveWindow(WindowDragAction):
 
     """
     def onUpdateDrag(self, xDiff, yDiff, event):
+        #TODO: Support for drawing an outline of the target position instead of constantly moving the window!
         x = self.initialGeometry.x + xDiff
         y = self.initialGeometry.y + yDiff
         xpybutil.conn.core.ConfigureWindow(self.window, *convertAttributes({
@@ -78,6 +83,7 @@ class _ResizeWindow(WindowDragAction):
 
     """
     def onUpdateDrag(self, xDiff, yDiff, event):
+        #TODO: Support for drawing an outline of the target size instead of constantly resizing the window!
         xpybutil.conn.core.ConfigureWindow(self.window, *convertAttributes({
                 ConfigWindow.Width: max(1, self.initialGeometry.width + xDiff),
                 ConfigWindow.Height: max(1, self.initialGeometry.height + yDiff)
@@ -85,14 +91,27 @@ class _ResizeWindow(WindowDragAction):
         xpybutil.conn.flush()
 
 
-def _raise(event, flush=True):
-    if event.child != xcb.NONE:
-        xpybutil.conn.core.ConfigureWindow(event.child, *convertAttributes({
-                ConfigWindow.StackMode: StackMode.Above
-                }))
+def tryRaise(window):
+    frame = singletons.wm.getFrame(window)
+    if frame is None:
+        logger.debug("No frame for window %r!", window)
+        return False
 
-        if flush:
-            xpybutil.conn.flush()
+    frame.raise_(flush=False)
+
+    # For now, auto-focus when raising.
+    frame.focus(flush=False)
+
+    return True
+
+
+def _raise(event, flush=True):
+    if event.child == xcb.NONE or not tryRaise(event.child):
+        logger.debug("Couldn't raise window for event %r!", event)
+        return
+
+    if flush:
+        xpybutil.conn.flush()
 
 
 def _raiseAnd(Action2):

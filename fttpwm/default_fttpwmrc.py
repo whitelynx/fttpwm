@@ -9,7 +9,7 @@ import fttpwm.themes.fonts as fonts
 import fttpwm.resources as resources
 from fttpwm.themes.wallpaper import SVG
 from fttpwm.bindings.app import startSingle, startParallel
-from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout
+from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout, _RaiseWindow
 from fttpwm.bindings.wm import quit, switchWorkspace
 import fttpwm.xdg.autostart as xdg_autostart
 
@@ -39,7 +39,7 @@ bindKeys({
         })
 
 bindMouse({
-        '1': FloatingBindings.raiseWindow,
+        '1': _RaiseWindow(),
         META + '1': FloatingBindings.raiseAndMoveWindow,
         META + '3': FloatingBindings.raiseAndResizeWindow,
         })

@@ -10,6 +10,7 @@ import fttpwm.resources as resources
 from fttpwm.themes.wallpaper import SVG
 from fttpwm.bindings.app import startSingle, startParallel
 from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout, _RaiseWindow
+from fttpwm.bindings.layout import moveNext, movePrevious, focusNext, focusPrevious
 from fttpwm.bindings.wm import quit, switchWorkspace
 import fttpwm.xdg.autostart as xdg_autostart
 
@@ -36,6 +37,10 @@ bindKeys({
         META + 'C': setLayout(Columns()),
         META + 'tab': FloatingBindings.nextWindow,
         META + 'Shift+tab': FloatingBindings.previousWindow,
+        META + 'T': focusNext,
+        META + 'N': focusPrevious,
+        META + 'Shift+T': moveNext,
+        META + 'Shift+N': movePrevious,
         })
 
 bindMouse({

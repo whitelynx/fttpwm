@@ -75,8 +75,8 @@ class XConnection(object):
 
         self.conn = xpybutil.conn
 
-        self.setup = xpybutil.conn.get_setup()
-        self.screenNumber = xpybutil.conn.pref_screen
+        self.setup = self.conn.get_setup()
+        self.screenNumber = self.conn.pref_screen
         self.screen = self.setup.roots[self.screenNumber]
         self.root = self.screen.root
         self.depth = self.screen.root_depth
@@ -104,7 +104,7 @@ class XConnection(object):
         `color` must be a tuple `(r, g, b)` where `r`, `g`, and `b` are between 0 and 1.
 
         """
-        return xpybutil.conn.core.AllocColor(self.colormap, *color).reply().pixel
+        return self.conn.core.AllocColor(self.colormap, *color).reply().pixel
 
     def createWindow(self, x, y, width, height, attributes={}, windowID=None, parentID=None, borderWidth=0,
             windowClass=WindowClass.InputOutput, checked=False):
@@ -116,7 +116,7 @@ class XConnection(object):
 
         """
         if windowID is None:
-            windowID = xpybutil.conn.generate_id()
+            windowID = self.conn.generate_id()
 
         if parentID is None:
             parentID = self.root
@@ -131,9 +131,9 @@ class XConnection(object):
             attribValues.append(value)
 
         if checked:
-            call = xpybutil.conn.core.CreateWindowChecked
+            call = self.conn.core.CreateWindowChecked
         else:
-            call = xpybutil.conn.core.CreateWindow
+            call = self.conn.core.CreateWindow
 
         cookie = call(
                 self.depth,
@@ -148,6 +148,17 @@ class XConnection(object):
             return windowID, cookie
         else:
             return windowID
+
+    def setProperty(self, windowID, property, data, type=Atom.STRING, format=8, mode=PropMode.Replace, data_len=None):
+        if data_len is None:
+            try:
+                data_len = len(data)
+            except:
+                data_len = 1
+
+        #TODO: Take care of some of the needed struct.pack() magic here?
+
+        xpybutil.conn.core.ChangeProperty(mode, windowID, property, type, format, data_len, data)
 
     def callEvery(self, interval, callback):
         self.timers.append(self.RecurringEvent(interval, callback))
@@ -167,7 +178,7 @@ class XConnection(object):
         # select.select later if someone wants it.
         fdPoll = select.poll()
         # Poll the X connection's file descriptor for incoming data.
-        fdPoll.register(xpybutil.conn.get_file_descriptor(), select.POLLIN)
+        fdPoll.register(self.conn.get_file_descriptor(), select.POLLIN)
 
         #NOTE: This does several things that xpybutil.event.main doesn't do:
         # - It ensures that the WM gets MapRequest events, and windows get SelectionRequest when appropriate.
@@ -228,7 +239,7 @@ class XConnection(object):
                     #    logger.debug("Got MapRequestEvent: %r; w=%r; listeners: %r",
                     #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
 
-                xpybutil.conn.flush()
+                self.conn.flush()
 
                 for timer in self.timers:
                     # If the timer's 'check' method returns None, remove it from the queue.

@@ -346,6 +346,9 @@ class Workspace(object):
         # Add to our collection of windows; this will trigger arrangeWindows.
         self.windows[frame.clientWindowID] = frame
 
+        # Set the window's _NET_WM_DESKTOP property.
+        ewmh.set_wm_desktop(frame.clientWindowID, self.index)
+
         frame.requestShow.connect(self.arrangeWindows)
 
     def removeWindow(self, frame):

@@ -10,6 +10,7 @@ import logging
 import os
 import struct
 import sys
+import weakref
 
 import xcb
 from xcb.xproto import Atom, CW, EventMask, InputFocus, PropMode, SetMode
@@ -54,6 +55,8 @@ class WM(object):
 
         self.windows = SignaledDict()
         self.windows.updated.connect(self.updateWindowList)
+
+        self.frameWindows = weakref.WeakValueDictionary()
 
         # Start with no global (non-workspace-specific / "pinned") struts.
         #TODO: Take Xinerama/XRandR dead spaces into account!
@@ -248,7 +251,7 @@ class WM(object):
                 # Other Root Window Messages
                 #   requests from client
                 #atom('_NET_WM_MOVERESIZE'),
-                #atom('_NET_REQUEST_FRAME_EXTENTS'),  # TODO: Handle this: set the given window's _NET_FRAME_EXTENTS.
+                #atom('_NET_REQUEST_FRAME_EXTENTS'),  # TODO: Handle this: calculate given window's _NET_FRAME_EXTENTS.
                 #   requests from pagers, etc.
                 #atom('_NET_CLOSE_WINDOW'),
                 #atom('_NET_MOVERESIZE_WINDOW'),
@@ -256,8 +259,8 @@ class WM(object):
 
                 # Application Window Properties
                 #   set by WM
-                atom('_NET_WM_DESKTOP'),  # Also may be set by client before initially mapping window
-                atom('_NET_WM_STATE'), atom('_NET_WM_ALLOWED_ACTIONS'),
+                atom('_NET_WM_ALLOWED_ACTIONS'),
+                atom('_NET_WM_DESKTOP'), atom('_NET_WM_STATE'),  # Also may be set by client before initially mapping
                 #   set by client
                 atom('_NET_WM_NAME'), atom('_NET_WM_ICON_NAME'),
                 atom('_NET_WM_WINDOW_TYPE'),
@@ -321,6 +324,7 @@ class WM(object):
         logger.debug("unmanageWindow: Unmanaging client window of %r...", frame)
 
         del self.windows[frame.clientWindowID]
+        del self.frameWindows[frame.frameWindowID]
         self.workspaces.removeWindow(frame)
 
     def focusWindow(self, frame):
@@ -349,6 +353,14 @@ class WM(object):
         ewmh.set_client_list(self.windows)
         ewmh.set_client_list_stacking(self.windows)
 
+    def getFrame(self, winID):
+        frame = self.windows.get(winID, None)
+
+        if frame is None:
+            frame = self.frameWindows.get(winID, None)
+
+        return frame
+
     ## Event handlers ####
     def onSelectionRequest(self, event):
         logger.debug("onSelectionRequest:\n  %s", "\n  ".join(map(repr, event.__dict__.items())))
@@ -375,10 +387,12 @@ class WM(object):
             self.manageWindow(clientWindowID)
 
         else:
-            logger.debug("manageWindow: Window %r is already in our list of clients; notifying existing frame.",
+            logger.debug("onMapRequest: Window %r is already in our list of clients; notifying existing frame.",
                     clientWindowID)
 
-        self.windows[clientWindowID].onClientMapRequest()
+        frame = self.windows[clientWindowID]
+        frame.onClientMapRequest()
+        self.frameWindows[frame.frameWindowID] = frame
 
     def onMapNotify(self, event):
         clientWindowID = event.window

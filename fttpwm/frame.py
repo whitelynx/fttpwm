@@ -5,10 +5,11 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from argparse import Namespace
+import json
 import logging
 
 import xcb
-from xcb.xproto import CW, ConfigWindow, StackMode, ConfigureNotifyEvent
+from xcb.xproto import Atom, CW, ConfigWindow, ConfigureNotifyEvent, PropMode, StackMode
 
 import xpybutil
 import xpybutil.event
@@ -22,7 +23,7 @@ from .bindings.layout import Floating as FloatingBindings
 from .ewmh import EWMHAction, EWMHWindowState
 from .mouse import bindMouse
 from .signals import Signal
-from .signaled import SignaledSet
+from .signaled import SignaledSet, SignaledDict
 from .settings import settings
 from .themes import Default, fonts
 from .utils import convertAttributes
@@ -32,7 +33,9 @@ from . import singletons
 UINT32_MAX = 2 ** 32
 
 settings.setDefaults(
-        theme=Default()
+        theme=Default(),
+        focusOnMouseEnter=False,
+        focusOnMouseClick=True,
         )
 
 # Default font options
@@ -70,6 +73,10 @@ class WindowFrame(object):
         self._icccmIconWindowID = xcb.NONE
 
         self.ewmhStates = SignaledSet()
+        self.ewmhStates.updated.connect(self._updateEWMHState)
+
+        self.layoutInfo = SignaledDict()
+        self.layoutInfo.updated.connect(self._updateLayoutInfo)
 
         self.subscribeToClientEvents()
 
@@ -207,12 +214,48 @@ class WindowFrame(object):
                 ConfigWindow.Y: y,
                 ConfigWindow.Width: width,
                 ConfigWindow.Height: height,
-                #ConfigWindow.StackMode: StackMode.Above,
                 })
         xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *attributes)
 
         if flush:
             xpybutil.conn.flush()
+
+    def focus(self, flush=True):
+        if not self.focused:
+            singletons.wm.focusWindow(self)
+
+        if flush:
+            xpybutil.conn.flush()
+
+    def raise_(self, flush=True):
+        xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *convertAttributes({
+                ConfigWindow.StackMode: StackMode.Above
+                }))
+
+        if flush:
+            xpybutil.conn.flush()
+
+    def lower(self, flush=True):
+        xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *convertAttributes({
+                ConfigWindow.StackMode: StackMode.Below
+                }))
+
+        if flush:
+            xpybutil.conn.flush()
+
+    def setProperty(self, property, data, type=Atom.STRING, format=8, mode=PropMode.Replace, data_len=None):
+        singletons.x.setProperty(self.frameWindowID, property, data, type, format, mode, data_len)
+
+    def setClientProperty(self, property, data, type=Atom.STRING, format=8, mode=PropMode.Replace, data_len=None):
+        singletons.x.setProperty(self.clientWindowID, property, data, type, format, mode, data_len)
+
+    def getLayoutInfo(self, layout):
+        layoutType = layout.__class__.__name__
+        return self.layoutInfo.get(layoutType, {})
+
+    def setLayoutInfo(self, layout, data):
+        layoutType = layout.__class__.__name__
+        self.layoutInfo[layoutType] = data
 
     ## Frame events ####
     def onConfigureNotify(self, event):
@@ -252,8 +295,8 @@ class WindowFrame(object):
     def onEnterNotify(self, event):
         self.logger.trace("onEnterNotify: %r", event.__dict__)
 
-        if not self.focused:
-            singletons.wm.focusWindow(self)
+        if settings.focusOnMouseEnter:
+            self.focus
 
     def onExpose(self, event):
         # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
@@ -474,6 +517,9 @@ class WindowFrame(object):
     def onClientUnmapNotify(self, event):
         self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
 
+        # Remove the window's _NET_WM_DESKTOP property.
+        xpybutil.conn.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
+
         self.clientMapped = False
 
         if self.icccmState != icccm.State.Iconic:
@@ -626,9 +672,15 @@ class WindowFrame(object):
         icccm.set_wm_state(self.clientWindowID, self.icccmState, self.icccmIconWindowID)
 
     def _updateEWMHState(self):
-        #TODO: Defer updates, so we only set _NET_WM_STATE once per event loop, even if both state and icon are updated
+        #TODO: Defer updates, so we only set _NET_WM_STATE once per event loop, even if multiple changes are made
         self.logger.trace("_updateEWMHState: Setting _NET_WM_STATE: %r", self.ewmhStates)
         ewmh.set_wm_state(self.clientWindowID, self.ewmhStates)
+
+    def _updateLayoutInfo(self):
+        #TODO: Defer updates, so we only set _FTTPWM_LAYOUT_INFO once per event loop, even if multiple changes are made
+        #TODO: This should probably done through the X Session Management Protocol instead of using properties.
+        self.logger.trace("_updateLayoutInfo: Setting _FTTPWM_LAYOUT_INFO: %r", json.dumps(self.layoutInfo))
+        self.setClientProperty(atom('_FTTPWM_LAYOUT_INFO'), json.dumps(self.layoutInfo))
 
     ## Visual Stuff ####
     def applyTheme(self):

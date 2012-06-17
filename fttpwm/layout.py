@@ -84,6 +84,15 @@ class ListLayout(BaseLayout):
         # Now, rearrange the window's workspace. (will convert all indices back to consecutive integers)
         frame.workspace.arrangeWindows()
 
+    def focusSiblingFrame(self, frame, n):
+        """Focus the frame `n` positions before (n < 0) or after (n > 0) the given one.
+
+        """
+        frames = frame.workspace.viewableFrames
+        frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        siblingIdx = (frames.index(frame) + n) % len(frames)
+        frames[siblingIdx].focus()
+
 
 class Columns(ListLayout):
     """Arranges all frames on a workspace in columns, giving each window equal width and full height.

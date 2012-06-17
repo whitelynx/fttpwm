@@ -172,3 +172,23 @@ def setLayout(layoutInstance):
         ws.setLayout(layoutInstance)
 
     return setLayout_
+
+
+def focusNext(*event):
+    wm = singletons.wm
+    wm.workspaces.current.layout.focusSiblingFrame(wm.focusedWindow, 1)
+
+
+def focusPrevious(*event):
+    wm = singletons.wm
+    wm.workspaces.current.layout.focusSiblingFrame(wm.focusedWindow, -1)
+
+
+def moveNext(*event):
+    wm = singletons.wm
+    wm.workspaces.current.layout.moveFrame(wm.focusedWindow, 1)
+
+
+def movePrevious(*event):
+    wm = singletons.wm
+    wm.workspaces.current.layout.moveFrame(wm.focusedWindow, -1)

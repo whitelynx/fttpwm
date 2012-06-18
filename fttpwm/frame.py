@@ -64,6 +64,9 @@ class WindowFrame(object):
         self.requestShow = Signal()
         self.closed = Signal()
 
+        self.surface = None
+        self.context = None
+
         self.clientMapped = False  # Whether or not the client window is currently mapped on the screen
         self.frameMapped = False  # Whether or not the frame window is currently mapped on the screen
         self.clientDestroyed = False  # Whether or not the client window has been destroyed
@@ -265,16 +268,18 @@ class WindowFrame(object):
         xpybutil.event.read(block=False)
         for ev in xpybutil.event.peek():
             if isinstance(ev, ConfigureNotifyEvent) and ev.event == ev.window and ev.event == self.frameWindowID:
+                self.logger.debug("onConfigureNotify: Ignoring event; more are in the queue.")
                 return
 
         self.x, self.y = event.x, event.y
         self.width, self.height = event.width, event.height
 
-        self.logger.trace("onConfigureNotify: Window geometry changed to %rx%r+%r+%r",
+        self.logger.debug("onConfigureNotify: Window geometry changed to %rx%r+%r+%r",
                 self.width, self.height, self.x, self.y)
 
-        # Window size changed; resize surface and redraw.
+        # Window size changed; resize surface and reset clip region.
         self.surface.set_size(event.width, event.height)
+        self.context.reset_clip()
 
         # Send client window a ConfigureNotify as well (regardless of whether the client's geometry actually changed)
         # so windows can update if their absolute coordinates changed.
@@ -523,9 +528,7 @@ class WindowFrame(object):
             # Remove the window's _NET_WM_DESKTOP property.
             xpybutil.conn.core.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
 
-            self.icccmState = icccm.State.Withdrawn
-
-            self.closed()
+            self.onClosed()
 
         if self.frameWindowID is None:
             self.logger.warn("onClientUnmapNotify: No frame window to hide! PANIC!")
@@ -541,7 +544,7 @@ class WindowFrame(object):
 
         self.clientDestroyed = True
 
-        self.closed()
+        self.onClosed()
 
         if self.clientWindowID is not None:
             try:
@@ -560,6 +563,15 @@ class WindowFrame(object):
 
         self.clientWindowID = None
         self.frameWindowID = None
+
+    def onClosed(self):
+        self.context = None
+        if self.surface is not None:
+            self.surface.finish()
+
+        self.icccmState = icccm.State.Withdrawn
+
+        self.closed()
 
     ## WM events ####
     def onGainedFocus(self):
@@ -682,20 +694,23 @@ class WindowFrame(object):
     ## Update Methods ####
     def _updateICCCMState(self):
         #TODO: Defer updates, so we only set WM_STATE once per event loop, even if both state and icon are updated
-        self.logger.trace("_updateICCCMState: Setting WM_STATE: state=%r, icon=%r",
-                self.icccmState, self.icccmIconWindowID)
-        icccm.set_wm_state(self.clientWindowID, self.icccmState, self.icccmIconWindowID)
+        if self.clientWindowID is not None:
+            self.logger.trace("_updateICCCMState: Setting WM_STATE: state=%r, icon=%r",
+                    self.icccmState, self.icccmIconWindowID)
+            icccm.set_wm_state(self.clientWindowID, self.icccmState, self.icccmIconWindowID)
 
     def _updateEWMHState(self):
         #TODO: Defer updates, so we only set _NET_WM_STATE once per event loop, even if multiple changes are made
-        self.logger.trace("_updateEWMHState: Setting _NET_WM_STATE: %r", self.ewmhStates)
-        ewmh.set_wm_state(self.clientWindowID, self.ewmhStates)
+        if self.clientWindowID is not None:
+            self.logger.trace("_updateEWMHState: Setting _NET_WM_STATE: %r", self.ewmhStates)
+            ewmh.set_wm_state(self.clientWindowID, self.ewmhStates)
 
     def _updateLayoutInfo(self):
         #TODO: Defer updates, so we only set _FTTPWM_LAYOUT_INFO once per event loop, even if multiple changes are made
         #TODO: This should probably done through the X Session Management Protocol instead of using properties.
-        self.logger.trace("_updateLayoutInfo: Setting _FTTPWM_LAYOUT_INFO: %r", json.dumps(self.layoutInfo))
-        self.setClientProperty(atom('_FTTPWM_LAYOUT_INFO'), json.dumps(self.layoutInfo))
+        if self.clientWindowID is not None:
+            self.logger.trace("_updateLayoutInfo: Setting _FTTPWM_LAYOUT_INFO: %r", json.dumps(self.layoutInfo))
+            self.setClientProperty(atom('_FTTPWM_LAYOUT_INFO'), json.dumps(self.layoutInfo))
 
     ## Visual Stuff ####
     def applyTheme(self):
@@ -705,7 +720,7 @@ class WindowFrame(object):
 
     def paint(self):
         if not self.initialized or self.frameWindowID is None or self.clientWindowID is None \
-                or self.icccmState == icccm.State.Withdrawn:
+                or self.icccmState == icccm.State.Withdrawn or self.context is None:
             # Skip painting.
             return
 

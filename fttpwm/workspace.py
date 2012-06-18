@@ -10,6 +10,8 @@ import logging
 import os
 import struct
 import sys
+import time
+import weakref
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
@@ -56,6 +58,7 @@ settings.setDefaults(
             ],
         initialWorkspace=0,
         defaultLayout=Rows(),
+        focusNewWindows=False,
         )
 
 
@@ -218,7 +221,11 @@ class Workspace(object):
 
         self.windows = SignaledDict()
         self.windows.updated.connect(self.arrangeWindows)
-        self.focusedWindow = None
+        self._focusedWindow = None
+        self.focusHistory = weakref.WeakKeyDictionary()
+
+        self.focusedWindowClosed = Signal()
+        self.focusedWindowClosed.connect(self.onFocusedWindowClosed)
 
         self.indexUpdated = Signal()
         self._index = None
@@ -241,6 +248,41 @@ class Workspace(object):
         # We don't want to fire workAreaUpdated here; that would generate duplicate calls to manager.updateWorkAreaHint
         manager.baseWorkAreaUpdated.connect(self.arrangeLocalDocks)
         manager.baseWorkAreaUpdated.connect(self.arrangeWindows)
+
+    @property
+    def focusedWindow(self):
+        if self._focusedWindow is not None:
+            return self._focusedWindow()
+
+    @focusedWindow.setter
+    def focusedWindow(self, frame):
+        if self.focusedWindow is not None:
+            # Disconnect from the previous window's closed signal.
+            self.focusedWindow.closed.disconnect(self.focusedWindowClosed)
+
+        if isinstance(frame, weakref.ReferenceType) or frame is None:
+            self._focusedWindow = frame
+        else:
+            self._focusedWindow = weakref.ref(frame)
+
+        if self.focusedWindow is None:
+            logger.info("Focused window set to None; focusing next most recently-focused window when idle.")
+            singletons.eventloop.callWhenIdle(self.focusMostRecent)
+
+        else:
+            # Connect to this window's closed signal.
+            self.focusedWindow.closed.connect(self.focusedWindowClosed)
+
+            # Add this window to the focus history.
+            self.focusHistory[self.focusedWindow] = time.time()
+
+    def onFocusedWindowClosed(self):
+        self.focusedWindow = None
+
+    def focusMostRecent(self):
+        frame = sorted(self.focusHistory.iteritems(), key=lambda item: item[1])[0][0]
+        logger.info("Focusing most recently-focused window. (%r)", frame)
+        frame.focus()
 
     @property
     def visible(self):
@@ -351,6 +393,9 @@ class Workspace(object):
 
         frame.requestShow.connect(self.arrangeWindows)
 
+        if self.focusedWindow is None or settings.focusNewWindows:
+            frame.focus()
+
     def removeWindow(self, frame):
         self.logger.debug("removeWindow: Removing window: %s", frame)
 
@@ -367,6 +412,10 @@ class Workspace(object):
             del self.windows[frame.clientWindowID]
 
         else:
+            logger.warn("frame.clientWindowID == xcb.NONE!")
             for k in self.windows.keys():
                 if self.windows[k] == frame:
                     del self.windows[k]
+
+        # Remove from the focus history.
+        del self.focusHistory[frame]

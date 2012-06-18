@@ -62,9 +62,11 @@ class WindowFrame(object):
                     ))
 
         self.requestShow = Signal()
+        self.closed = Signal()
 
         self.clientMapped = False  # Whether or not the client window is currently mapped on the screen
         self.frameMapped = False  # Whether or not the frame window is currently mapped on the screen
+        self.clientDestroyed = False  # Whether or not the client window has been destroyed
         self.viewable = False  # Whether or not this window would be visible if its workspace were shown
         self.initialized = False  # Whether or not this frame has finished initializing
 
@@ -111,10 +113,12 @@ class WindowFrame(object):
 
         # Client window events
         if self.clientWindowID is not None:
-            try:
-                xpybutil.window.listen(self.clientWindowID)
-            except:
-                self.logger.exception("Error while clearing listened events on client window %r!", self.clientWindowID)
+            if not self.clientDestroyed:
+                try:
+                    xpybutil.window.listen(self.clientWindowID)
+                except:
+                    self.logger.exception("Error while clearing listened events on client window %r!",
+                            self.clientWindowID)
 
             xpybutil.event.disconnect('MapNotify', self.clientWindowID)
             xpybutil.event.disconnect('UnmapNotify', self.clientWindowID)
@@ -159,24 +163,18 @@ class WindowFrame(object):
     def hide(self):
         self.logger.trace("hide: Hiding %r.", self)
 
-        cookies = list()
+        self.icccmState = icccm.State.Iconic
+        #FIXME: EWMH state!
 
         if self.clientMapped:
             self.logger.debug("hide: Unmapping client window.")
-            cookies.append(xpybutil.conn.core.UnmapWindowChecked(self.clientWindowID))
+            xpybutil.conn.core.UnmapWindow(self.clientWindowID)
 
         if self.frameMapped:
             self.logger.debug("hide: Unmapping frame window.")
-            cookies.append(xpybutil.conn.core.UnmapWindowChecked(self.frameWindowID))
+            xpybutil.conn.core.UnmapWindow(self.frameWindowID)
 
-        for cookie in cookies:
-            try:
-                cookie.check()
-            except:
-                self.logger.exception("hide: Error unmapping %r!", self)
-
-        self.icccmState = icccm.State.Iconic
-        #FIXME: EWMH state!
+        xpybutil.conn.flush()
 
     def onShow(self):
         self.logger.trace("onShow: Showing %r.", self)
@@ -290,7 +288,7 @@ class WindowFrame(object):
                 })
         xpybutil.conn.core.ConfigureWindow(self.clientWindowID, *attributes)
 
-        singletons.x.callWhenQueueEmpty(self.paint)
+        singletons.eventloop.callWhenIdle(self.paint)
 
     def onEnterNotify(self, event):
         self.logger.trace("onEnterNotify: %r", event.__dict__)
@@ -302,12 +300,12 @@ class WindowFrame(object):
         # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
         # collapse such series into a single call to paint() so we don't get extraneous redraws.
         if event.count == 0:
-            singletons.x.callWhenQueueEmpty(self.paint)
+            singletons.eventloop.callWhenIdle(self.paint)
 
     def onMapNotify(self, event):
         self.frameMapped = True
 
-        singletons.x.callWhenQueueEmpty(self.paint)
+        singletons.eventloop.callWhenIdle(self.paint)
 
     def onUnmapNotify(self, event):
         self.frameMapped = False
@@ -377,7 +375,8 @@ class WindowFrame(object):
                     )
 
             # Set up Cairo.
-            self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, singletons.x.visual, self.width, self.height)
+            self.surface = cairo.XCBSurface(xpybutil.conn, self.frameWindowID, singletons.x.visual,
+                    self.width, self.height)
             self.context = cairo.Context(self.surface)
 
             self.activateBindings()
@@ -516,14 +515,17 @@ class WindowFrame(object):
 
     def onClientUnmapNotify(self, event):
         self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
-
-        # Remove the window's _NET_WM_DESKTOP property.
-        xpybutil.conn.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
+        #TODO: Only do most of this stuff if the window wasn't unmapped because of switching workspaces!
 
         self.clientMapped = False
 
         if self.icccmState != icccm.State.Iconic:
+            # Remove the window's _NET_WM_DESKTOP property.
+            xpybutil.conn.core.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
+
             self.icccmState = icccm.State.Withdrawn
+
+            self.closed()
 
         if self.frameWindowID is None:
             self.logger.warn("onClientUnmapNotify: No frame window to hide! PANIC!")
@@ -537,13 +539,15 @@ class WindowFrame(object):
     def onClientDestroyNotify(self, event):
         self.logger.debug("onClientDestroyNotify: %r", event.__dict__)
 
+        self.clientDestroyed = True
+
+        self.closed()
+
         if self.clientWindowID is not None:
             try:
                 singletons.wm.unmanageWindow(self)
             except:
                 self.logger.exception("onClientDestroyNotify: Error unmanaging client window %r!", self.clientWindowID)
-
-            self.clientWindowID = None
 
         self.unsubscribeFromEvents()
 
@@ -554,7 +558,8 @@ class WindowFrame(object):
             except:
                 self.logger.exception("onClientDestroyNotify: Error destroying frame window %r!", self.frameWindowID)
 
-            self.frameWindowID = None
+        self.clientWindowID = None
+        self.frameWindowID = None
 
     ## WM events ####
     def onGainedFocus(self):
@@ -574,6 +579,16 @@ class WindowFrame(object):
     def onWorkspaceVisibilityChanged(self):
         if self.clientWindowID is None:
             self.logger.warn("onWorkspaceVisibilityChanged: No client window! PANIC!")
+
+            try:
+                # If you have objgraph and xdot installed, this will show an interactive backref graph.
+                import objgraph
+                objgraph.show_backrefs([self], refcounts=True, max_depth=20)
+            except:
+                pass
+
+            import pprint
+            pprint.pprint(dict(getattr(xpybutil.event, '__callbacks')))
             return
 
         if self.frameWindowID is None:
@@ -686,7 +701,7 @@ class WindowFrame(object):
     def applyTheme(self):
         settings.theme.apply(self)
 
-        singletons.x.callWhenQueueEmpty(self.paint)
+        singletons.eventloop.callWhenIdle(self.paint)
 
     def paint(self):
         if not self.initialized or self.frameWindowID is None or self.clientWindowID is None \

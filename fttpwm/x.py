@@ -44,26 +44,6 @@ settings.setDefaults(
 
 
 class XConnection(object):
-    class RecurringEvent(object):
-        def __init__(self, interval, callback):
-            self.interval, self.callback = interval, callback
-            self.nextCall = datetime.datetime.now() + interval
-
-        def check(self):
-            try:
-                if datetime.datetime.now() > self.nextCall:
-                    self()
-            except StopIteration:
-                # Leave the timer queue.
-                return None
-
-            # Stay in the timer queue.
-            return self
-
-        def __call__(self):
-            self.callback()
-            self.nextCall = datetime.datetime.now() + self.interval
-
     def __init__(self):
         self.startupFinished = False
         self.onStartup = Signal()
@@ -88,6 +68,8 @@ class XConnection(object):
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
+
+        singletons.eventloop.register(self.conn, self.handleXCBComm)
 
     def __getattr__(self, name):
         """Get an attribute from the X connection.
@@ -160,94 +142,72 @@ class XConnection(object):
 
         xpybutil.conn.core.ChangeProperty(mode, windowID, property, type, format, data_len, data)
 
-    def callEvery(self, interval, callback):
-        self.timers.append(self.RecurringEvent(interval, callback))
+    def printXCBExc(self, error):
+        logger.exception("Protocol error %s received!", error.__class__.__name__)
 
-    def callWhenQueueEmpty(self, callback):
-        self.whenQueueEmpty.add(callback)
+        # These attributes seem to be completely undocumented, and they don't show up in dir(error) because they're
+        # dynamic.
+        logger.debug("""Error details:
+    Error code: %r
+    Response type: %r
+    Sequence num: %r
+    Raw msg: %s""",
+                error.message.code,
+                error.message.response_type,
+                error.message.sequence,
+                ' '.join('{:02X}'.format(ord(c)) for c in error.message)
+                )
 
-    def exit(self):
-        self.running = False
+    def handleXCBComm(self, stream, evt):
+        """Read all incoming data from the X server, and process all resulting events.
 
-    ## Main event loop ####
-    def run(self):
-        logger.info("Starting main event loop.")
-        self.running = True
-
-        # select.poll won't work on Windows, but at the moment I don't particularly care. This can be implemented with
-        # select.select later if someone wants it.
-        fdPoll = select.poll()
-        # Poll the X connection's file descriptor for incoming data.
-        fdPoll.register(self.conn.get_file_descriptor(), select.POLLIN)
-
+        """
         #NOTE: This does several things that xpybutil.event.main doesn't do:
-        # - It ensures that the WM gets MapRequest events, and windows get SelectionRequest when appropriate.
-        # - It implements crude timers so various things can register a callback to happen every `n` seconds, or once
-        #   after `n` seconds.
-        # - It implements callWhenQueueEmpty, which effectively runs a callback when we're idle.
+        # - ensures that the WM gets MapRequest events
+        # - ensures that windows get SelectionRequest when appropriate
         try:
-            while self.running:
-                #FIXME: Find a better way to do timeouts than polling and sleeping! It'd be preferable to block, if we
-                # could set a timeout on the blocking call.
-                #xpybutil.event.read(block=True)
+            try:
                 xpybutil.event.read(block=False)
+            except xcb.ProtocolException, error:
+                self.printXCBExc(error)
 
-                # Check if there are any waiting events.
-                if len(xpybutil.event.peek()) == 0:
-                    # Run all the callbacks in whenQueueEmpty, and clear it.
-                    for callback in self.whenQueueEmpty:
-                        callback()
-
-                    self.whenQueueEmpty.clear()
-
-                    # Poll for events for 10ms, then time out so we can check our timers.
-                    fdPoll.poll(10)
-
-                for e in xpybutil.event.queue():
+            for e in xpybutil.event.queue():
+                w = None
+                if isinstance(e, MappingNotifyEvent):
+                    # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
+                    # update the stored keyboard mapping.
                     w = None
-                    if isinstance(e, MappingNotifyEvent):
-                        # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
-                        # update the stored keyboard mapping.
-                        w = None
-                    elif isinstance(e, (CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent)):
-                        # Send all SubstructureRedirect *Request events to the parent window, which should be the
-                        # window which had the SubstructureRedirect mask set on it. (that is, if i'm reading the docs
-                        # correctly)
-                        w = e.parent
-                    elif hasattr(e, 'event'):
-                        w = e.event
-                    elif hasattr(e, 'window'):
-                        w = e.window
-                    elif hasattr(e, 'owner'):
-                        w = e.owner
-                    elif hasattr(e, 'requestor'):
-                        w = e.requestor
+                elif isinstance(e, (CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent)):
+                    # Send all SubstructureRedirect *Request events to the parent window, which should be the
+                    # window which had the SubstructureRedirect mask set on it. (that is, if i'm reading the docs
+                    # correctly)
+                    w = e.parent
+                elif hasattr(e, 'event'):
+                    w = e.event
+                elif hasattr(e, 'window'):
+                    w = e.window
+                elif hasattr(e, 'owner'):
+                    w = e.owner
+                elif hasattr(e, 'requestor'):
+                    w = e.requestor
 
-                    key = (e.__class__, w)
-                    for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
-                        try:
-                            cb(e)
-                        except Exception:
-                            logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
-                                    cb, e.__class__, w)
+                key = (e.__class__, w)
+                for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
+                    try:
+                        cb(e)
+                    except Exception:
+                        logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
+                                cb, e.__class__, w)
 
-                    #XXX: Debugging...
-                    #if isinstance(e, ConfigureNotifyEvent):
-                    #    logger.debug("Got ConfigureNotifyEvent: %r; w=%r; listeners: %r",
-                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
-                    #if isinstance(e, MapRequestEvent):
-                    #    logger.debug("Got MapRequestEvent: %r; w=%r; listeners: %r",
-                    #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
+                #XXX: Debugging...
+                #if isinstance(e, ConfigureNotifyEvent):
+                #    logger.debug("Got ConfigureNotifyEvent: %r; w=%r; listeners: %r",
+                #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
+                #if isinstance(e, MapRequestEvent):
+                #    logger.debug("Got MapRequestEvent: %r; w=%r; listeners: %r",
+                #            e.__dict__, w, getattr(xpybutil.event, '__callbacks').get(key, []))
 
-                self.conn.flush()
-
-                for timer in self.timers:
-                    # If the timer's 'check' method returns None, remove it from the queue.
-                    if timer.check() is None:
-                        self.timers.remove(timer)
+            self.conn.flush()
 
         except xcb.Exception:
-            logger.exception("Error in main event loop! Exiting with error status.")
-            sys.exit(1)
-
-        logger.info("Event loop terminated; shutting down normally.")
+            logger.exception("Error while handling X11 communication!")

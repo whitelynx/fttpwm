@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- codin-g: utf-8 -*-
 """FTTPWM: Main application
 
 Copyright (c) 2012 David H. Bronke
@@ -9,7 +9,6 @@ from collections import deque
 import logging
 import os
 import struct
-import sys
 import weakref
 
 import xcb
@@ -73,10 +72,10 @@ class WM(object):
                 'bottom': self.strutsBottom
                 }
 
-        self.workspaces = WorkspaceManager()
+        self._lastFocusedWindow = None
 
-        #TODO: Move into Workspace!
-        self.focusedWindow = None
+        self.workspaces = WorkspaceManager()
+        self.workspaces.currentChanged.connect(self.onWorkspaceChanged)
 
         self.checkForOtherWMs()
         self.startManaging()
@@ -102,6 +101,60 @@ class WM(object):
             callback()
         else:
             self.onStartup.connect(callback)
+
+    def _doFocus(self, frame):
+        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, frame.clientWindowID, xcb.CurrentTime)
+        ewmh.set_active_window(frame.clientWindowID)
+
+        try:
+            frame.onGainedFocus()
+        except:
+            logger.exception("focusWindow: Error calling onGainedFocus on %r.", frame)
+
+        xpybutil.conn.flush()
+
+        self.lastFocusedWindow = frame
+
+    def onWorkspaceChanged(self):
+        frame = self.focusedWindow
+        if frame is not None:
+            logger.debug("Workspace changed; setting input focus to %r.", frame)
+
+            self._doFocus(frame)
+
+    @property
+    def focusedWindow(self):
+        return self.workspaces.current.focusedWindow
+
+    @focusedWindow.setter
+    def focusedWindow(self, frame):
+        if self.lastFocusedWindow is not None:
+            try:
+                self.lastFocusedWindow.onLostFocus()
+            except:
+                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.lastFocusedWindow)
+
+        if frame is None and self.workspaces.current.focusedWindow is not None:
+            logger.warn("Setting workspace %r's focused window to None! (used to be %r)",
+                    self.workspaces.current, self.workspaces.current.focusedWindow)
+        self.workspaces.current.focusedWindow = frame
+
+        if frame is None:
+            self.lastFocusedWindow = None
+        else:
+            self._doFocus(frame)
+
+    @property
+    def lastFocusedWindow(self):
+        if self._lastFocusedWindow is not None:
+            return self._lastFocusedWindow()
+
+    @lastFocusedWindow.setter
+    def lastFocusedWindow(self, frame):
+        if isinstance(frame, weakref.ReferenceType):
+            self._lastFocusedWindow = frame
+        else:
+            self._lastFocusedWindow = weakref.ref(frame)
 
     @property
     def strutsLeftSize(self):
@@ -166,7 +219,7 @@ class WM(object):
                     })).check()
         except:
             logger.exception("Another window manager is already running! Exiting.")
-            sys.exit(1)
+            singletons.eventloop.exit(1)
 
     def startManaging(self):
         logger.debug("startManaging: Initializing EWMH compliance.")
@@ -330,23 +383,7 @@ class WM(object):
     def focusWindow(self, frame):
         logger.debug("focusWindow: Focusing %r.", frame)
 
-        if self.focusedWindow is not None:
-            try:
-                self.focusedWindow.onLostFocus()
-            except:
-                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.focusedWindow)
-
         self.focusedWindow = frame
-
-        xpybutil.conn.core.SetInputFocus(InputFocus.PointerRoot, frame.clientWindowID, xcb.CurrentTime)
-        ewmh.set_active_window(frame.clientWindowID)
-
-        try:
-            frame.onGainedFocus()
-        except:
-            logger.exception("focusWindow: Error calling onGainedFocus on %r.", self.focusedWindow)
-
-        xpybutil.conn.flush()
 
     ## Managed windows ####
     def updateWindowList(self):

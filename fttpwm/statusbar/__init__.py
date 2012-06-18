@@ -104,7 +104,7 @@ class StatusBar(object):
         except:
             self.logger.exception("Error mapping!")
 
-        singletons.x.callEvery(timedelta(seconds=1), self.paint)
+        singletons.eventloop.callEvery(timedelta(seconds=1), self.paint)
         singletons.wm.workspaces.currentChanged.connect(self.paint)
 
     def subscribeToEvents(self):

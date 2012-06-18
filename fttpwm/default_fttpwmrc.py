@@ -2,7 +2,7 @@ from os import chdir
 from os.path import expanduser
 
 from fttpwm.keyboard import bindKeys
-from fttpwm.layout import Floating, Rows, Columns
+from fttpwm.layout import Floating, TabbedMaximized, Columns, Rows
 from fttpwm.mouse import bindMouse
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
@@ -33,8 +33,9 @@ bindKeys({
         META + 'bracketleft': switchWorkspace(10),
         META + 'bracketright': switchWorkspace(11),
         META + 'F': setLayout(Floating()),
-        META + 'R': setLayout(Rows()),
+        META + 'G': setLayout(TabbedMaximized()),
         META + 'C': setLayout(Columns()),
+        META + 'R': setLayout(Rows()),
         META + 'tab': FloatingBindings.nextWindow,
         META + 'Shift+tab': FloatingBindings.previousWindow,
         META + 'T': focusNext,

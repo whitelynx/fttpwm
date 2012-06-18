@@ -1,5 +1,4 @@
 import logging
-import sys
 
 from .. import singletons
 
@@ -20,4 +19,4 @@ def switchWorkspace(ws):
 
 def quit(*event):
     logger.debug("Exiting.")
-    singletons.x.exit()
+    singletons.eventloop.exit()

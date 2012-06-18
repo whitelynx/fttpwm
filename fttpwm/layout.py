@@ -46,19 +46,20 @@ class ListLayout(BaseLayout):
     def arrange(self, ws):
         frames = ws.viewableFrames
         frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        frameCount = len(frames)
 
         self.logger.debug("arrange: Arranging frames: %r", frames)
 
-        self.startArrange(ws, len(frames))
+        self.startArrange(ws, frameCount)
 
         for index, frame in enumerate(frames):
-            geometry = self.framePosition(index, frame, ws, len(frames))
+            geometry = self.framePosition(index, frame, ws, frameCount)
             self.logger.debug("Moving/resizing %r to %r.", frame, geometry)
             frame.moveResize(*geometry, flush=False)
 
-            # Ensure all frames are visible
-            frame.onShow()
+            self.onFramePositioned(index, frame, ws, frameCount)
 
+            # Update all frame indices to be consecutive integers.
             frame.setLayoutInfo(self, {'index': index})
 
         xpybutil.conn.flush()
@@ -70,6 +71,10 @@ class ListLayout(BaseLayout):
     @abstractmethod
     def framePosition(self, index, frame, ws, frameCount):
         pass
+
+    def onFramePositioned(self, index, frame, ws, frameCount):
+        # By default, ensure all frames are visible
+        frame.onShow()
 
     def moveFrame(self, frame, n):
         """Move the frame forward or backward within its list of siblings by the given number of positions.
@@ -88,7 +93,12 @@ class ListLayout(BaseLayout):
         """Focus the frame `n` positions before (n < 0) or after (n > 0) the given one.
 
         """
-        frames = frame.workspace.viewableFrames
+        try:
+            frames = frame.workspace.viewableFrames
+        except ReferenceError:
+            print frame
+            print frame.workspace
+            print frame.workspace.viewableFrames
         frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
         siblingIdx = (frames.index(frame) + n) % len(frames)
         frames[siblingIdx].focus()
@@ -136,7 +146,7 @@ class Rows(ListLayout):
         return (self.frameX, frameY, self.frameWidth, self.frameHeight)
 
 
-class TabbedMaximized(BaseLayout):
+class TabbedMaximized(ListLayout):
     """Shows the focused window maximized, and rolls all other windows into tabs.
 
     """
@@ -145,22 +155,19 @@ class TabbedMaximized(BaseLayout):
     def __init__(self, padding=0):
         self.padding = padding
 
-    def arrange(self, ws):
-        frames = ws.viewableFrames
+    def startArrange(self, ws, frameCount):
+        self.frameX = ws.effectiveWorkAreaX + self.padding
+        self.frameY = ws.effectiveWorkAreaY + self.padding
+        self.frameWidth = ws.effectiveWorkAreaWidth - 2 * self.padding
+        self.frameHeight = ws.effectiveWorkAreaHeight - 2 * self.padding
 
-        self.logger.debug("arrange: Arranging frames: %r", frames)
+        if ws.focusedWindow is not None:
+            ws.focusedWindow.onShow()
 
-        x = ws.effectiveWorkAreaX + self.padding
-        y = ws.effectiveWorkAreaY + self.padding
-        width = (ws.effectiveWorkAreaWidth - self.padding) / len(frames) - self.padding
-        height = ws.effectiveWorkAreaHeight - 2 * self.padding
+    def framePosition(self, index, frame, ws, frameCount):
+        return (self.frameX, self.frameY, self.frameWidth, self.frameHeight)
 
-        for frame in frames:
-            self.logger.debug("Moving/resizing %r to %r.", frame, (x, y, width, height))
-            frame.moveResize(x, y, width, height, flush=False)
-            x += width + self.padding
-
-            # Ensure all frames are visible
-            frame.onShow()
-
-        xpybutil.conn.flush()
+    def onFramePositioned(self, index, frame, ws, frameCount):
+        # Only show the currently-focused frame.
+        if frame is not ws.focusedWindow:
+            frame.hide()

@@ -62,7 +62,7 @@ class CacheableCairoSurface(object):
         # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
         # collapse such series into a single call to paint() so we don't get extraneous redraws.
         if event.count == 0:
-            self.wm.callWhenQueueEmpty(self.paint)
+            self.eventloop.callWhenIdle(self.paint)
 
     def onMapNotify(self, event):
         self.mapped = True

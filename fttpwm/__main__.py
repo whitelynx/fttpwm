@@ -138,6 +138,7 @@ try:
     from .eventloop.zmq_loop import ZMQEventLoop
 
     eventloop = ZMQEventLoop()
+    logger.info("Using the ZeroMQ event loop.")
 
 except ImportError:
     logger.warn("Couldn't import zmq! Falling back to polling event loop.", exc_info=True)

@@ -77,6 +77,13 @@ class WM(object):
         self.workspaces = WorkspaceManager()
         self.workspaces.currentChanged.connect(self.onWorkspaceChanged)
 
+        try:
+            from fttpwm.control import RemoteControlServer
+            self.remoteServer = RemoteControlServer()
+
+        except ImportError:
+            logger.warn("Error importing RemoteControlServer; no remote control available!", exc_info=True)
+
         self.checkForOtherWMs()
         self.startManaging()
         settings.loadSettings()

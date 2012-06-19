@@ -1,11 +1,15 @@
 """Remote control server component
 
 """
+from argparse import Namespace
+from string import Template
+from os.path import abspath, expanduser
 import binascii
 import code
 import collections
 import logging
 import os
+import re
 import sys
 import traceback
 
@@ -14,11 +18,18 @@ from zmq.eventloop.zmqstream import ZMQStream
 
 try:
     from . import singletons
+    from .settings import settings
+    from .xdg import basedir
 except ValueError:
     pass
 
 
 logger = logging.getLogger("fttpwm.control")
+
+settings.setDefaults(
+        #controlAddress="tcp://127.0.0.1",
+        controlAddress=Template("ipc://$XDG_RUNTIME_DIR/fttpwm-$DISPLAY.ipc"),
+        )
 
 
 class RemoteInterpreter(code.InteractiveInterpreter):
@@ -52,16 +63,70 @@ class RemoteInterpreter(code.InteractiveInterpreter):
         sys.stderr = sys.__stderr__
 
 
+addrPattern = re.compile(r'(?P<protocol>\w+)://(?P<endpoint>.*)')
+tcpEndpointPattern = re.compile(r'(?P<interface>[^:]+)(?::(?P<port>\d+))?')
+pgmEndpointPattern = re.compile(r'(?P<interface>[^;]+);(?P<multicast_addr>[^:]+)(?::(?P<port>\d+))?')
+
+
+def parseAddr(address):
+    match = addrPattern.match(address)
+
+    if not match:
+        logger.warn("Invalid address: %r", address)
+        return
+
+    groups = match.groupdict()
+
+    if groups['protocol'] == 'tcp':
+        match = tcpEndpointPattern.match(address)
+        if match:
+            groups.update(match.groupdict())
+        else:
+            logger.warn("Invalid TCP address: %r", address)
+
+    elif groups['protocol'] in ('pgm', 'epgm'):
+        match = pgmEndpointPattern.match(address)
+        if match:
+            groups.update(match.groupdict())
+        else:
+            logger.warn("Invalid PGM address: %r", address)
+
+    return Namespace(**groups)
+
+
+def shouldHavePort(protocol):
+    return protocol in ('tcp', 'pgm', 'epgm')
+
+
 class RemoteControlServer(object):
     def __init__(self):
         context = zmq.Context.instance()
 
+        address = settings.controlAddress
+        if isinstance(address, Template):
+            environ = dict(os.environ.iteritems())
+            environ['XDG_RUNTIME_DIR'] = basedir.runtimeDir
+
+            address = address.substitute(**environ)
+
         self.socket = context.socket(zmq.ROUTER)
-        port = self.socket.bind_to_random_port("tcp://127.0.0.1")
 
-        logger.info("Remote control server listening on port %s.", port)
-        os.environ['FTTPWM_REMOTE_PORT'] = str(port)
+        parsed = parseAddr(address)
 
+        if parsed.protocol == 'ipc':
+            address = 'ipc://{}'.format(abspath(expanduser(parsed.endpoint)))
+
+        if shouldHavePort(parsed.protocol) and parsed.port is None:
+            port = self.socket.bind_to_random_port(address)
+            address = '{}:{}'.format(address, port)
+
+        else:
+            self.socket.bind(address)
+
+        logger.info("Remote control server listening on %s.", address)
+        os.environ['FTTPWM_IPC_ADDR'] = address
+
+        #FIXME: Figure out how to clean up interpreters when disconnects happen! (maybe heartbeats and timeouts)
         self.sessions = collections.defaultdict(RemoteInterpreter)
 
         self.stream = ZMQStream(self.socket)

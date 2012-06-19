@@ -34,7 +34,7 @@ def main():
             sys.stdout.write(msg[0])
 
     socket = context.socket(zmq.DEALER)
-    socket.connect("tcp://localhost:{}".format(os.environ['FTTPWM_REMOTE_PORT']))
+    socket.connect(os.environ['FTTPWM_IPC_ADDR'])
 
     stream = ZMQStream(socket, io_loop)
     stream.on_recv_stream(handleReply)

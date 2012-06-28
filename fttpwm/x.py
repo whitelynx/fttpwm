@@ -13,7 +13,8 @@ import select
 import sys
 
 import xcb
-from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
+from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, Mapping, PropMode, SetMode, StackMode
+from xcb.xproto import WindowClass
 from xcb.xproto import CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent
 from xcb.xproto import ConfigureNotifyEvent, MappingNotifyEvent
 
@@ -68,6 +69,9 @@ class XConnection(object):
 
         self.white = self.screen.white_pixel
         self.black = self.screen.black_pixel
+
+        self.pendingUpdateKeyboardMapping = None
+        self.pendingUpdateModifierMapping = None
 
         singletons.eventloop.register(self.conn, self.handleXCBComm)
 
@@ -158,6 +162,14 @@ class XConnection(object):
                 ' '.join('{:02X}'.format(ord(c)) for c in error.message)
                 )
 
+    def updateKeyboardMapping(self):
+        xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateKeyboardMapping)
+        self.pendingUpdateKeyboardMapping = None
+
+    def updateModifierMapping(self):
+        xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateModifierMapping)
+        self.pendingUpdateModifierMapping = None
+
     def handleXCBComm(self, stream, evt):
         """Read all incoming data from the X server, and process all resulting events.
 
@@ -173,10 +185,24 @@ class XConnection(object):
 
             for e in xpybutil.event.queue():
                 w = None
+
                 if isinstance(e, MappingNotifyEvent):
                     # MappingNotify events get sent to the xpybutil.keybind.update_keyboard_mapping function, to
                     # update the stored keyboard mapping.
-                    w = None
+
+                    if e.request == Mapping.Keyboard:
+                        if self.pendingUpdateKeyboardMapping is None:
+                            singletons.eventloop.callWhenIdle(self.updateKeyboardMapping)
+                        self.pendingUpdateKeyboardMapping = e
+
+                    elif e.request == Mapping.Modifier:
+                        if self.pendingUpdateModifierMapping is None:
+                            singletons.eventloop.callWhenIdle(self.updateModifierMapping)
+                        self.pendingUpdateModifierMapping = e
+
+                    # Don't process this event right now; wait for the queue to empty first.
+                    continue
+
                 elif isinstance(e, (CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent)):
                     # Send all SubstructureRedirect *Request events to the parent window, which should be the
                     # window which had the SubstructureRedirect mask set on it. (that is, if i'm reading the docs
@@ -192,12 +218,15 @@ class XConnection(object):
                     w = e.requestor
 
                 key = (e.__class__, w)
+                logger.debug("Calling callbacks for %r event on window %r...", *key)
                 for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
+                    logger.debug("  Calling callback %r...", cb)
                     try:
                         cb(e)
                     except Exception:
                         logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
                                 cb, e.__class__, w)
+                    logger.debug("  Callback %r finished.", cb)
 
                 #XXX: Debugging...
                 #if isinstance(e, ConfigureNotifyEvent):

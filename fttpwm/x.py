@@ -218,15 +218,16 @@ class XConnection(object):
                     w = e.requestor
 
                 key = (e.__class__, w)
-                logger.debug("Calling callbacks for %r event on window %r...", *key)
+                #logger.debug("Calling callbacks for %r event on window %r...", *key)
                 for cb in getattr(xpybutil.event, '__callbacks').get(key, []):
-                    logger.debug("  Calling callback %r...", cb)
+                    #logger.debug("  Calling callback %r...", cb)
                     try:
                         cb(e)
                     except Exception:
                         logger.exception("Error while calling callback %r for %r event on %r! Continuing...",
                                 cb, e.__class__, w)
-                    logger.debug("  Callback %r finished.", cb)
+                    #logger.debug("  Callback %r finished.", cb)
+                #logger.debug("Finished calling callbacks for %r event on window %r.", *key)
 
                 #XXX: Debugging...
                 #if isinstance(e, ConfigureNotifyEvent):

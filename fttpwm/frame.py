@@ -5,6 +5,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from argparse import Namespace
+from collections import defaultdict
 import json
 import logging
 
@@ -396,6 +397,7 @@ class WindowFrame(object):
 
         # Set window title.
         self.title = cookies.ewmhTitle.reply() or cookies.icccmTitle.reply()
+        self.logger.info("New window has title %r", self.title)
         del cookies.ewmhTitle
         del cookies.icccmTitle
 
@@ -423,6 +425,7 @@ class WindowFrame(object):
 
         self.icccmClientHints = cookies.icccmClientHints.reply()
         del cookies.icccmClientHints
+        icccmFlags = self.icccmClientHints.get('flags', defaultdict(bool))
 
         #icccm.get_wm_hints => {
         #    'flags': {
@@ -452,7 +455,7 @@ class WindowFrame(object):
         # Default to showing the window normally.
         initialState = icccm.State.Normal
 
-        if self.icccmClientHints['flags']['State']:
+        if icccmFlags['State']:
             initialState = self.icccmClientHints['initial_state']
 
         if initialState == icccm.State.Iconic:
@@ -471,7 +474,7 @@ class WindowFrame(object):
             self.requestShow(self)
 
         # If there's an icon window, hide it; we don't use it.
-        if self.icccmClientHints['flags']['IconWindow']:
+        if icccmFlags['IconWindow']:
             self.icccmIconWindowID = self.icccmClientHints['icon_window']
             self.logger.debug("Client specified an icon window (WM_HINTS.icon_window=%r); unmapping it.",
                     self.icccmIconWindowID)

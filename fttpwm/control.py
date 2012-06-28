@@ -33,19 +33,18 @@ settings.setDefaults(
 
 
 class RemoteInterpreter(code.InteractiveInterpreter):
-    def __init__(self):
+    def __init__(self, manager, clientAddr):
+        self.manager = manager
+        self.zmqStream = manager.stream
+        self.clientAddr = clientAddr
+
         self.local = {
                 '__name__': '__console__',
                 '__doc__': None,
-                '_stdoutput': self,
                 }
         self.local.update(singletons.__dict__)
 
         code.InteractiveInterpreter.__init__(self, self.local)
-
-    def setClientAddr(self, stream, clientAddr):
-        self.zmqStream = stream
-        self.clientAddr = clientAddr
 
     def write(self, data):
         self.zmqStream.send_multipart([self.clientAddr, data])
@@ -54,13 +53,23 @@ class RemoteInterpreter(code.InteractiveInterpreter):
         self.write(repr(value) + '\n')
 
     def runsource(self, *args):
-        sys.displayhook = self.displayhook
-        sys.stdout = self
-        sys.stderr = self
+        sys.displayhook, sys.stdout, sys.stderr = self.displayhook, self, self
         code.InteractiveInterpreter.runsource(self, *args)
-        sys.displayhook = sys.__displayhook__
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
+        sys.displayhook, sys.stdout, sys.stderr = sys.__displayhook__, sys.__stdout__, sys.__stderr__
+
+
+class RemoteSessionManager(dict):
+    def __init__(self, stream):
+        self.sessions = dict()
+        self.sessionTimeouts = dict()
+
+        self.stream = stream
+
+    def __getitem__(self, clientAddr):
+        if clientAddr not in self.sessions:
+            self.sessions[clientAddr] = RemoteInterpreter(self, clientAddr)
+
+        return self.sessions[clientAddr]
 
 
 addrPattern = re.compile(r'(?P<protocol>\w+)://(?P<endpoint>.*)')
@@ -126,36 +135,64 @@ class RemoteControlServer(object):
         logger.info("Remote control server listening on %s.", address)
         os.environ['FTTPWM_IPC_ADDR'] = address
 
-        #FIXME: Figure out how to clean up interpreters when disconnects happen! (maybe heartbeats and timeouts)
-        self.sessions = collections.defaultdict(RemoteInterpreter)
-
         self.stream = ZMQStream(self.socket)
-        self.stream.on_recv(self.execute)
+        self.stream.on_recv(self.messageReceived)
 
-    def execute(self, msg):
-        if len(msg) == 3 and msg[1] == 'END':
+        #FIXME: Figure out how to clean up interpreters when disconnects happen! (maybe heartbeats and timeouts)
+        self.sessions = RemoteSessionManager(self.stream)
+
+    def handleMessage(self, msg):
+        if len(msg) < 2:
+            raise ValueError("No opcode specified!")
+
+        clientAddr, opcode = msg[:2]
+        payload = msg[2:]
+        argc = len(payload)
+
+        if opcode == 'PING':
+            return ['PONG']
+
+        elif opcode == 'END':
             # Simply echo the END message back so the client knows it's received all its responses.
-            response = msg
+            return msg[1:]
 
-        elif len(msg) == 2:
-            clientAddr, command = msg
+        elif opcode == 'COMMAND':
+            if argc > 1:
+                raise ValueError("Too many arguments for opcode 'COMMAND'! (takes 1 argument; %d given)" % (argc, ))
+            elif argc < 1:
+                raise ValueError("Not enough arguments for opcode 'COMMAND'! (takes 1 argument; %d given)" % (argc, ))
 
-            logger.info("Got remote command from client %r, blindly executing: %r",
-                    binascii.hexlify(clientAddr), command)
+            logger.info("Got remote command from client %s, blindly executing: %r",
+                    binascii.hexlify(clientAddr), payload[0])
+
             try:
                 session = self.sessions[clientAddr]
-                session.setClientAddr(self.stream, clientAddr)
-                session.runsource(command, '<remote>')
+                session.runsource(payload[0], '<remote>')
                 return
+
             except:
-                response = [clientAddr, traceback.format_exc()]
+                return [traceback.format_exc()]
 
+        return ["Invalid request!"]
+
+    def messageReceived(self, msg):
+        clientAddr = msg[0]
+        logger.debug("Got message from %s: %r", binascii.hexlify(clientAddr), msg[1:])
+
+        try:
+            response = self.handleMessage(msg)
+        except Exception as ex:
+            logger.warn("Exception encountered while running command for client %r!",
+                    binascii.hexlify(clientAddr), exc_info=True)
+            response = ['ERROR', str(ex)]
+
+        if response:
+            logger.debug("Sending response for command from client %s: %r",
+                    binascii.hexlify(clientAddr), response)
+            self.stream.send_multipart([clientAddr] + response)
         else:
-            clientAddr = msg[0]
-
-            response = [clientAddr, "Invalid request!"]
-
-        self.stream.send_multipart(response)
+            logger.debug("Finished running command from client %s; no response to send.",
+                    binascii.hexlify(clientAddr))
 
 
 if __name__ == '__main__':
@@ -188,10 +225,16 @@ if __name__ == '__main__':
 
     #  Do 10 requests on stream 1
     for request in range(0, 10):
-        stream.send("dir(wm)", callback=lambda *a: logger.debug("Stream 1 finished sending message; %r", a))
+        stream.send_multipart(
+                ['COMMAND', "dir(wm)"],
+                callback=lambda *a: logger.debug("Stream 1 finished sending message; %r", a)
+                )
 
     #  Do 5 requests on stream 2
     for request in range(0, 5):
-        stream2.send("dir(x)", callback=lambda *a: logger.debug("Stream 2 finished sending message; %r", a))
+        stream2.send_multipart(
+                ['COMMAND', "dir(x)"],
+                callback=lambda *a: logger.debug("Stream 2 finished sending message; %r", a)
+                )
 
     io_loop.start()

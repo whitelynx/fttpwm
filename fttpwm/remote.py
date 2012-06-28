@@ -39,9 +39,8 @@ def main():
     stream = ZMQStream(socket, io_loop)
     stream.on_recv_stream(handleReply)
 
-    #  Do 10 requests on stream 1
     for command in args.commands:
-        stream.send(command)
+        stream.send_multipart(['COMMAND', command])
 
     stream.send_multipart(endMessage)
 

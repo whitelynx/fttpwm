@@ -23,10 +23,10 @@ def main():
 
     io_loop = zmq.eventloop.ioloop.IOLoop.instance()
     context = zmq.Context()
-    endMessage = ['END', uuid.uuid1().bytes]
+    closeMessage = ['CLOSE', uuid.uuid1().bytes]
 
     def handleReply(stream, msg):
-        if msg == endMessage:
+        if msg == closeMessage:
             io_loop.stop()
 
         else:
@@ -42,7 +42,7 @@ def main():
     for command in args.commands:
         stream.send_multipart(['COMMAND', command])
 
-    stream.send_multipart(endMessage)
+    stream.send_multipart(closeMessage)
 
     io_loop.start()
 

@@ -71,6 +71,9 @@ class RemoteSessionManager(dict):
 
         return self.sessions[clientAddr]
 
+    def __delitem__(self, clientAddr):
+        del self.sessions[clientAddr]
+
 
 addrPattern = re.compile(r'(?P<protocol>\w+)://(?P<endpoint>.*)')
 tcpEndpointPattern = re.compile(r'(?P<interface>[^:]+)(?::(?P<port>\d+))?')
@@ -129,8 +132,7 @@ class RemoteControlServer(object):
             port = self.socket.bind_to_random_port(address)
             address = '{}:{}'.format(address, port)
 
-        else:
-            self.socket.bind(address)
+        self.socket.bind(address)
 
         logger.info("Remote control server listening on %s.", address)
         os.environ['FTTPWM_IPC_ADDR'] = address
@@ -152,8 +154,14 @@ class RemoteControlServer(object):
         if opcode == 'PING':
             return ['PONG']
 
-        elif opcode == 'END':
-            # Simply echo the END message back so the client knows it's received all its responses.
+        elif opcode == 'FLUSH':
+            # Simply echo the FLUSH message back so the client knows it's received all its responses.
+            return msg[1:]
+
+        elif opcode == 'CLOSE':
+            # Remove this client's session.
+            del self.sessions[clientAddr]
+            logger.info("Closing session for client %s.", binascii.hexlify(clientAddr))
             return msg[1:]
 
         elif opcode == 'COMMAND':

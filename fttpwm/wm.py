@@ -439,25 +439,25 @@ class WM(object):
         self.frameWindows[frame.frameWindowID] = frame
 
     def onMapNotify(self, event):
-        clientWindowID = event.window
-        logger.debug("onMapNotify: %r", clientWindowID)
+        windowID = event.window
+        logger.debug("onMapNotify: %r", windowID)
 
-        struts = self.getWindowStruts(clientWindowID)
+        struts = self.getWindowStruts(windowID)
         logger.debug("Struts: %r", struts)
         if struts is not None:
             for side in 'left right top bottom'.split():
                 if struts[side] > 0:
                     logger.debug("onMapNotify: Found strut on %s side: %s", side, struts[side])
-                    self.struts[side][clientWindowID] = struts[side]
+                    self.struts[side][windowID] = struts[side]
 
             # Listen for UnmapNotify events so we can ditch the struts when the window unmaps.
-            xpybutil.window.listen(clientWindowID, 'StructureNotify')
-            xpybutil.event.connect('UnmapNotify', clientWindowID, self.onUnmapNotify)
+            xpybutil.window.listen(windowID, 'StructureNotify')
+            xpybutil.event.connect('UnmapNotify', windowID, self.onUnmapNotify)
 
     def onUnmapNotify(self, event):
-        clientWindowID = event.window
-        #logger.trace("onUnmapNotify: %r", clientWindowID)  # This is REALLY noisy.
+        windowID = event.window
+        #logger.trace("onUnmapNotify: %r", windowID)  # This is REALLY noisy.
 
         for side in 'left right top bottom'.split():
-            if clientWindowID in self.struts[side]:
-                del self.struts[side][clientWindowID]
+            if windowID in self.struts[side]:
+                del self.struts[side][windowID]

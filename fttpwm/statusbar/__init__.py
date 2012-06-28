@@ -213,3 +213,5 @@ class StatusBar(object):
 
         self.surface.flush()
         xpybutil.conn.flush()
+
+        return True

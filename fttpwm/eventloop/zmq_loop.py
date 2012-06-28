@@ -60,8 +60,11 @@ class ZMQEventLoop(BaseEventLoop):
             if not callback():
                 cb.stop()
 
-        cb = zmq.eventloop.ioloop.PeriodicCallback(call,
-                self.asTimedelta(interval).total_seconds(), self.io_loop)
+        cb = zmq.eventloop.ioloop.PeriodicCallback(
+                call,
+                self.asTimedelta(interval).total_seconds() * 1000,
+                self.io_loop
+                )
         cb.start()
 
     def register(self, stream, handler, event=StreamEvents.INCOMING):

@@ -425,7 +425,10 @@ class WindowFrame(object):
 
         self.icccmClientHints = cookies.icccmClientHints.reply()
         del cookies.icccmClientHints
-        icccmFlags = self.icccmClientHints.get('flags', defaultdict(bool))
+
+        icccmFlags = defaultdict(bool)
+        if self.icccmClientHints is not None and 'flags' in self.icccmClientHints:
+            icccmFlags = self.icccmClientHints['flags']
 
         #icccm.get_wm_hints => {
         #    'flags': {

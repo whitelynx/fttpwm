@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+"""FTTPWM: Utility functions
+
+Copyright (c) 2012 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+"""
 import datetime
 import logging
 import re
@@ -6,6 +14,13 @@ import struct
 
 
 logger = logging.getLogger("fttpwm.utils")
+
+
+def loggerFor(cls):
+    if not isinstance(cls, type):
+        cls = type(cls)
+
+    return logging.getLogger('{}.{}'.format(cls.__module__, cls.__name__))
 
 
 def convertAttributes(attributes):

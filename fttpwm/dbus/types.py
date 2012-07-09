@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- cod-ing: utf-8 -*-
 from __future__ import unicode_literals
 """FTTPWM: D-Bus data type system
 
@@ -11,41 +11,19 @@ import struct
 
 from StringIO import StringIO
 
-"""
-BYTE	A single 8-bit byte.	1
-BOOLEAN	As for UINT32, but only 0 and 1 are valid values.	4
-INT16	16-bit signed integer in the message's byte order.	2
-UINT16	16-bit unsigned integer in the message's byte order.	2
-INT32	32-bit signed integer in the message's byte order.	4
-UINT32	32-bit unsigned integer in the message's byte order.	4
-INT64	64-bit signed integer in the message's byte order.	8
-UINT64	64-bit unsigned integer in the message's byte order.	8
-DOUBLE	64-bit IEEE 754 double in the message's byte order.	8
 
-UNIX_FD	32-bit unsigned integer in the message's byte order. The actual file descriptors need to be transferred out-of-band via some platform specific mechanism. On the wire, values of this type store the index to the file descriptor in the array of file descriptors that accompany the message.	4
-
-STRING	A UINT32 indicating the string's length in bytes excluding its terminating nul, followed by non-nul string data of the given length, followed by a terminating nul byte.	 4 (for the length)
-
-OBJECT_PATH	Exactly the same as STRING except the content must be a valid object path (see below).	 4 (for the length)
-
-SIGNATURE	The same as STRING except the length is a single byte (thus signatures have a maximum length of 255) and the content must be a valid signature (see below).	 1
-
-ARRAY	 A UINT32 giving the length of the array data in bytes, followed by alignment padding to the alignment boundary of the array element type, followed by each array element. The array length is from the end of the alignment padding to the end of the last element, i.e. it does not include the padding after the length, or any padding after the last element. Arrays have a maximum length defined to be 2 to the 26th power or 67108864. Implementations must not send or accept arrays exceeding this length.	 4 (for the length)
-
-STRUCT	 A struct must start on an 8-byte boundary regardless of the type of the struct fields. The struct value consists of each field marshaled in sequence starting from that 8-byte alignment boundary.	 8
-
-VARIANT	 A variant type has a marshaled SIGNATURE followed by a marshaled value with the type given in the signature. Unlike a message signature, the variant signature can contain only a single complete type. So "i", "ai" or "(ii)" is OK, but "ii" is not. Use of variants may not cause a total message depth to be larger than 64, including other container types such as structures.	 1 (alignment of the signature)
-
-DICT_ENTRY	 Identical to STRUCT.	 8
-
-"""
+NotSpecified = object()
 
 
 class Marshaller(StringIO):
+    # Cache of Struct objects to speed up reading and writing messages.
+    #TODO: Right now, we're pretty much always writing single values one at a time, instead of combining the message
+    # into one larger struct definition and writing it all at once. We'd probably be able to get better performance by
+    # combining them first, but this hypothesis should probably also be tested first.
     structFormatters = dict()
 
-    def __init__(self, data='', byteOrder='='):
-        super(Marshaller, self).__init__(data)
+    def __init__(self, data=b'', byteOrder=b'='):
+        StringIO.__init__(self, data)
 
         self.byteOrder = byteOrder
 
@@ -59,13 +37,41 @@ class Marshaller(StringIO):
         self.discard(self.padSize(alignment))
 
     def writePad(self, alignment):
-        self.write('\0' * self.padSize(alignment))  # Write (padSize) null bytes.
+        padSize = self.padSize(alignment)
+        if padSize == 0:
+            return
+        print('{}: \033[90mWriting {} bytes of padding.\033[m'.format(self, padSize))
+        self.write(b'\0' * padSize)  # Write (padSize) null bytes.
 
     def discard(self, size):
         """Skip the next (size) bytes.
 
         """
+        if size == 0:
+            return
+        print('{}: \033[33mDiscarding (skipping) {} bytes.\033[m'.format(self, size))
         self.seek(size, mode=1)
+
+    def seek(self, pos, mode=0):
+        print('{}: \033[34mseek({!r}, {!r}) from {!r}\033[m'.format(self, pos, mode, self.tell()))
+        return StringIO.seek(self, pos, mode)
+
+    def skip(self, fmt):
+        """Skip bytes equal to the size represented by fmt.
+
+        """
+        formatter = self.getStructFormatter(fmt)
+        self.discard(formatter.size)
+
+    def writeFiller(self, fmt):
+        """Write null bytes equal to the size represented by fmt.
+
+        """
+        size = self.getStructFormatter(fmt).size
+        if size == 0:
+            return
+        print('{}: \033[33mWriting {} bytes of filler.\033[m'.format(self, size))
+        self.write(b'\0' * size)  # Write (padSize) null bytes.
 
     def getStructFormatter(self, fmt):
         fmt = self.byteOrder + fmt
@@ -89,7 +95,10 @@ class Marshaller(StringIO):
         self.writePad(alignment)
 
         # Write the value(s).
-        self.write(formatter.pack(*values))
+        packed = formatter.pack(*values)
+        print('{}: \033[32mWriting {} bytes of data ({}) at {}: {!r}\033[m'.format(
+                self, formatter.size, fmt, self.tell(), packed))
+        self.write(packed)
 
     def unpack(self, fmt, **kwargs):
         """Read one or more values using the given format and alignment.
@@ -105,7 +114,10 @@ class Marshaller(StringIO):
         self.readPad(alignment)
 
         # Read the value(s).
-        unpacked = formatter.unpack(self.read(formatter.size))
+        packed = self.read(formatter.size)
+        print('{}: \033[32mRead {} bytes of data ({}) at {}: {!r}\033[m'.format(
+                self, formatter.size, fmt, self.tell(), packed))
+        unpacked = formatter.unpack(packed)
 
         if len(unpacked) == 1:
             return unpacked[0]
@@ -113,6 +125,8 @@ class Marshaller(StringIO):
 
 
 class SignatureParser(object):
+    types = dict()
+
     def __init__(self, signature):
         self.signature = self.remaining = signature
 
@@ -134,34 +148,65 @@ class SignatureParser(object):
         return nextType.fromSignature(self)
 
 
-def parseSignatures(signature):
-    return tuple(*SignatureParser(signature))
+def parseSignatures(signatures):
+    return tuple(SignatureParser(signatures))
 
 
 def parseSignature(signature):
     parsed = parseSignatures(signature)
-    assert len(parsed) == 0
+    assert len(parsed) == 1
     return parsed[0]
 
 
+class _TypeDefMeta(ABCMeta):
+    def __new__(metacls, name, bases, dict):
+        cls = ABCMeta.__new__(metacls, name, bases, dict)
+
+        # Register class with the signature parser.
+        if len(cls.__abstractmethods__) == 0:
+            SignatureParser.types[cls.typeCode] = cls
+
+        return cls
+
+
 class TypeDef(object):
-    __metaclass__ = ABCMeta
+    __metaclass__ = _TypeDefMeta
 
     typeCode = abstractproperty()
     structFmt = abstractproperty()
+    valueType = abstractproperty()
 
     @abstractmethod
     def __init__(self):
         super(TypeDef, self).__init__()
 
-    @abstractmethod
+        self.defaultValue = NotSpecified
+
+    def __call__(self, value=NotSpecified):
+        if value is NotSpecified:
+            if self.defaultValue is NotSpecified:
+                return self.valueType()
+
+            else:
+                return self.defaultValue
+
+        else:
+            return self.valueType(value)
+
     @classmethod
     def fromSignature(cls, parser):
-        pass
+        return cls()
 
-    @property()
+    def toSignature(self):
+        return self.typeCode
+
+    @property
     def alignment(self):
         return self.size
+
+    @property
+    def size(self):
+        return struct.calcsize(self.structFmt)
 
     @abstractmethod
     def writeTo(self, marshaller, data):
@@ -173,25 +218,51 @@ class TypeDef(object):
 
 
 class BasicTypeDef(TypeDef):
-    @classmethod
-    def fromSignature(cls, parser):
-        return cls()
+    def __init__(self):
+        super(BasicTypeDef, self).__init__()
 
     def writeTo(self, marshaller, data):
         marshaller.pack(self.structFmt, data)
 
     def readFrom(self, marshaller):
-        return marshaller.unpack(self.structFmt)
+        return self(marshaller.unpack(self.structFmt))
 
 
-class BYTE(BasicTypeDef):
+class IntegerTypeDef(BasicTypeDef):
+    valueType = int
+
+
+class BYTE(IntegerTypeDef):
     """8-bit unsigned integer
 
     Type code: 121 (ASCII 'y')
 
     """
-    typeCode = 'y'
-    structFmt = 'B'
+    typeCode = b'y'
+    structFmt = b'B'
+
+    class _ByteInstance(int):
+        def __new__(cls, value=NotSpecified, base=NotSpecified):
+            try:
+                if value is NotSpecified:
+                    return int.__new__(cls)
+
+                elif base is NotSpecified:
+                    return int.__new__(cls, value)
+
+                else:
+                    return int.__new__(cls, value, base)
+
+            except ValueError:
+                return int.__new__(cls, ord(value))
+
+    valueType = _ByteInstance
+
+    def writeTo(self, marshaller, data):
+        marshaller.pack(self.structFmt, self.valueType(data))
+
+    def readFrom(self, marshaller):
+        return self.valueType(marshaller.unpack(self.structFmt))
 
 
 class BOOLEAN(BasicTypeDef):
@@ -200,68 +271,69 @@ class BOOLEAN(BasicTypeDef):
     Type code: 98 (ASCII 'b')
 
     """
-    typeCode = 'b'
-    structFmt = 'xxx?'  # BOOLEAN in the D-Bus spec is 32-bit, but Python's struct module only uses 8 bits; add padding
+    typeCode = b'b'
+    structFmt = b'xxx?'  # BOOLEAN in the spec is 32-bit, but Python's struct module only uses 8 bits; add padding.
+    valueType = bool
 
 
-class INT16(BasicTypeDef):
+class INT16(IntegerTypeDef):
     """16-bit signed integer
 
     Type code: 110 (ASCII 'n')
 
     """
-    typeCode = 'n'
-    structFmt = 'h'
+    typeCode = b'n'
+    structFmt = b'h'
 
 
-class UINT16(BasicTypeDef):
+class UINT16(IntegerTypeDef):
     """16-bit unsigned integer
 
     Type code: 113 (ASCII 'q')
 
     """
-    typeCode = 'q'
-    structFmt = 'H'
+    typeCode = b'q'
+    structFmt = b'H'
 
 
-class INT32(BasicTypeDef):
+class INT32(IntegerTypeDef):
     """32-bit signed integer
 
     Type code: 105 (ASCII 'i')
 
     """
-    typeCode = 'i'
-    structFmt = 'i'
+    typeCode = b'i'
+    structFmt = b'i'
 
 
-class UINT32(BasicTypeDef):
+class UINT32(IntegerTypeDef):
     """32-bit unsigned integer
 
     Type code: 117 (ASCII 'u')
 
     """
-    typeCode = 'u'
-    structFmt = 'I'
+    typeCode = b'u'
+    structFmt = b'I'
 
 
-class INT64(BasicTypeDef):
+class INT64(IntegerTypeDef):
     """64-bit signed integer
 
     Type code: 120 (ASCII 'x')
 
     """
-    typeCode = 'x'
-    structFmt = 'q'
+    typeCode = b'x'
+    structFmt = b'q'
 
 
-class UINT64(BasicTypeDef):
+class UINT64(IntegerTypeDef):
     """64-bit unsigned integer
 
     Type code: 116 (ASCII 't')
 
     """
-    typeCode = 't'
-    structFmt = 'Q'
+    typeCode = b't'
+    structFmt = b'Q'
 
 
 class DOUBLE(BasicTypeDef):
@@ -270,18 +342,19 @@ class DOUBLE(BasicTypeDef):
     Type code: 100 (ASCII 'd')
 
     """
-    typeCode = 'd'
-    structFmt = 'd'
+    typeCode = b'd'
+    structFmt = b'd'
+    valueType = float
 
 
-class UNIX_FD(BasicTypeDef):
+class UNIX_FD(IntegerTypeDef):
     """Unix file descriptor
 
     Type code: 104 (ASCII 'h')
 
     """
-    typeCode = 'h'
-    structFmt = 'I'
+    typeCode = b'h'
+    structFmt = b'I'
 
 
 class STRING(BasicTypeDef):
@@ -289,19 +362,20 @@ class STRING(BasicTypeDef):
 
     Type code: 115 (ASCII 's')
     """
-    typeCode = 's'
-    structFmt = 'I'
+    typeCode = b's'
+    structFmt = b'I'
+    valueType = unicode
 
     def writeTo(self, marshaller, data):
         marshaller.pack(self.structFmt, len(data))  # String length in bytes, excluding terminating null
-        marshaller.write(data)  # String data
+        marshaller.write(data.encode('UTF-8'))  # String data
         marshaller.write('\0')  # Terminating null byte
 
     def readFrom(self, marshaller):
         length = marshaller.unpack(self.structFmt)  # String length in bytes, excluding terminating null
-        data = marshaller.read(length)
+        data = marshaller.read(length).decode('UTF-8')
         marshaller.discard(1)  # Discard terminating null byte.
-        return data
+        return self(data)
 
 
 class OBJECT_PATH(STRING):
@@ -310,7 +384,7 @@ class OBJECT_PATH(STRING):
     Type code: 111 (ASCII 'o')
 
     """
-    typeCode = 'o'
+    typeCode = b'o'
 
 
 class SIGNATURE(STRING):
@@ -319,12 +393,24 @@ class SIGNATURE(STRING):
     Type code: 103 (ASCII 'g')
 
     """
-    typeCode = 'g'
-    structFmt = 'B'
+    typeCode = b'g'
+    structFmt = b'B'
+
+    def valueType(self, value):
+        return parseSignatures(value)
 
 
 class ContainerTypeDef(TypeDef):
     def __init__(self, *subtypes):
+        for subtype in subtypes:
+            if not isinstance(subtype, TypeDef):
+                raise TypeError('{}() argument must be a TypeDef, not {!r}'.format(
+                    type(self).__name__,
+                    type(subtype).__name__)
+                    )
+
+        super(ContainerTypeDef, self).__init__()
+
         self.subtypes = subtypes
 
 
@@ -342,6 +428,13 @@ class EnclosedContainerTypeDef(ContainerTypeDef):
 
         return cls(*subtypes)
 
+    def toSignature(self):
+        return '{}{}{}'.format(
+                self.typeCode,
+                ''.join(st.toSignature() for st in self.subtypes),
+                self.endTypeCode
+                )
+
 
 class ARRAY(ContainerTypeDef):
     """Array
@@ -357,12 +450,33 @@ class ARRAY(ContainerTypeDef):
     Type code: 97 (ASCII 'a')
 
     """
-    typeCode = 'a'
-    structFmt = 'I'
+    typeCode = b'a'
+    structFmt = b'I'
 
     def __init__(self, subtype):
         super(ARRAY, self).__init__(subtype)
-        self.subtype = subtype
+
+    @property
+    def subtype(self):
+        return self.subtypes[0]
+
+    @property
+    def valueType(self):
+        if isinstance(self.subtype, DICT_ENTRY):
+            if isinstance(self.subtype.subtypes[1], VARIANT):
+                return VARIANT._VariantDict
+            else:
+                return dict
+        else:
+            return list
+
+    @classmethod
+    def fromSignature(cls, parser):
+        subtype = parser.buildNext()
+        return cls(subtype)
+
+    def toSignature(self):
+        return '{}{}'.format(self.typeCode, self.subtype.toSignature())
 
     def writeTo(self, marshaller, data):
         # Support for dictionaries.
@@ -371,8 +485,8 @@ class ARRAY(ContainerTypeDef):
 
         placeholderPos = marshaller.tell()
 
-        marshaller.skip(self.structFmt)  # Placeholder for length in bytes
-        self.writePad(self.subtype.alignment)  # Padding for contents
+        marshaller.writeFiller(self.structFmt)  # Placeholder for length in bytes
+        marshaller.writePad(self.subtype.alignment)  # Padding for contents
 
         startPos = marshaller.tell()
 
@@ -393,21 +507,15 @@ class ARRAY(ContainerTypeDef):
 
     def readFrom(self, marshaller):
         length = marshaller.unpack(self.structFmt)  # Array length in bytes
-        self.readPad(self.subtype.alignment)  # Padding for contents
+        marshaller.readPad(self.subtype.alignment)  # Padding for contents
 
-        startPos = marshaller.tell()
-        endPos = startPos + length
+        endPos = marshaller.tell() + length
+        items = list(self._readItems(marshaller, endPos))
 
-        data = list(self._readItems(marshaller, endPos))
-
-        # Support for dictionaries.
-        if isinstance(self.subtype, DICT_ENTRY):
-            return dict(data)
-
-        return data
+        return self.valueType(items)
 
 
-class STRUCT(ContainerTypeDef):
+class STRUCT(EnclosedContainerTypeDef):
     """Struct.
 
     Type code 114 'r' is reserved for use in bindings and implementations to represent the general concept of a struct,
@@ -416,22 +524,160 @@ class STRUCT(ContainerTypeDef):
     Type codes: 114 (ASCII 'r'), 40 (ASCII '('), 41 (ASCII ')')
 
     """
-    typeCode = '('
-    endTypeCode = ')'
-    structFmt = 'd'  # Only used to give us 8-byte alignment
+    typeCode = b'('
+    endTypeCode = b')'
+    structFmt = b'd'  # Only used to give us 8-byte alignment
 
-    def __init__(self, *subtypes):
-        super(VARIANT, self).__init__(subtypes)
-        self._memberNames = None
+    def __init__(self, *subtypes, **kwargs):
+        super(STRUCT, self).__init__(*subtypes)
+
+        self._memberNames = kwargs.pop('memberNames', None)
+
+        if len(kwargs) != 0:
+            raise TypeError('unrecognized keyword arguments: {}'.format(', '.join(kwargs)))
+
+    def makeOrderedStructInstance(self):
+        class _OrderedStructInstance(list):
+            def __init__(inst, *values):
+                if len(values) < len(self.subtypes):
+                    values += tuple(subtype() for subtype in self.subtypes[len(values):])
+
+                super(_OrderedStructInstance, inst).__init__(values)
+
+            def __repr__(inst):
+                output = ['Sig(', repr(str(self.toSignature())), ')(']
+                output.append(', '.join(map(repr, inst)))
+                output.append(')')
+
+                return ''.join(output)
+
+            def __getitem__(inst, index):
+                try:
+                    return super(_OrderedStructInstance, inst).__getitem__(index)
+                except IndexError:
+                    raise IndexError("struct index out of range")
+
+            def __setitem__(inst, index, value):
+                if index > len(self.subtypes):
+                    raise IndexError("struct index out of range")
+
+                super(_OrderedStructInstance, inst).__setitem__(index, value)
+
+        return _OrderedStructInstance
+
+    def makeNamedValueStructInstance(self):
+        class _NamedValueStructInstance(object):
+            __slots__ = self.memberNames
+
+            def __init__(inst, *values, **namedValues):
+                remaining = set(self.memberNames)
+
+                for idx, value in enumerate(values):
+                    remaining.remove(self.memberNames[idx])
+                    inst[idx] = value
+
+                for key, value in namedValues.iteritems():
+                    remaining.remove(key)
+                    inst[key] = value
+
+                for key in remaining:
+                    inst[key] = self.subtypes[self.memberNames.index(key)]()
+
+            def __repr__(inst):
+                output = ['Sig(', repr(str(self.toSignature())), ')(']
+                output.append(', '.join('{}={!r}'.format(key, inst[key]) for key in self.memberNames))
+                output.append(')')
+
+                return ''.join(output)
+
+            def __getitem__(inst, key):
+                try:
+                    name = key
+                    if not isinstance(key, basestring):
+                        name = self.memberNames[key]
+
+                    return getattr(inst, name)
+
+                except IndexError:
+                    raise IndexError("struct index {} out of range".format(key))
+
+                except AttributeError:
+                    if isinstance(key, basestring):
+                        raise AttributeError("no struct member named {}".format(key))
+                    else:
+                        raise AttributeError("struct member {} has not yet been set".format(self.memberNames[key]))
+
+            def __setitem__(inst, key, value):
+                try:
+                    if not isinstance(key, basestring):
+                        key = self.memberNames[key]
+
+                    setattr(inst, key, value)
+
+                except IndexError:
+                    raise IndexError("struct index {} out of range".format(key))
+
+                except AttributeError:
+                    raise AttributeError("no struct member named {}".format(key))
+
+        return _NamedValueStructInstance
+
+    @property
+    def valueType(self):
+        try:
+            return self._instanceClass
+
+        except AttributeError:
+            if self.memberNames is not None:
+                self._instanceClass = self.makeNamedValueStructInstance()
+            else:
+                self._instanceClass = self.makeOrderedStructInstance()
+            return self._instanceClass
+
+    def __call__(self, *values, **namedValues):
+        namedValueCount = len(namedValues)
+        positionalValueCount = len(values)
+
+        if positionalValueCount + namedValueCount > len(self.subtypes):
+            raise TypeError('{cls}.__call__() takes at most {subtypeCount} argument{plural} ({argCount} given)'.format(
+                    cls=type(self).__name__,
+                    subtypeCount=len(self.subtypes),
+                    plural='' if len(self.subtypes) == 1 else 's',
+                    argCount=positionalValueCount + namedValueCount
+                    ))
+
+        if namedValueCount > 0 and self.memberNames is None:
+            raise TypeError('keyword arguments not allowed when no STRUCT member names have been assigned')
+
+        return self.valueType(*values, **namedValues)
+
+    def __getitem__(self, key):
+        try:
+            if isinstance(key, basestring):
+                key = self.memberNames.index(key)
+
+            return self.subtypes[key]
+
+        except IndexError:
+            raise IndexError("struct index {} out of range".format(key))
+
+        except ValueError:
+            raise KeyError("no struct member named {}".format(key))
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError as ex:
+            raise AttributeError(ex.message)
 
     @property
     def memberNames(self):
         return self._memberNames
 
     @memberNames.setter
-    def memberNames(self, value):
-        assert len(value) == len(self.subtypes)
-        self._memberNames = value
+    def memberNames(self, names):
+        assert len(names) == len(self.subtypes)
+        self._memberNames = names
 
     def writeTo(self, marshaller, data):
         if self.memberNames is not None:
@@ -443,19 +689,20 @@ class STRUCT(ContainerTypeDef):
             except AttributeError:
                 pass
 
-        self.writePad(self.alignment)  # Padding for contents
+        marshaller.writePad(self.alignment)  # Padding for contents
 
         # Write contents!
         for subtype, item in zip(self.subtypes, data):
             subtype.writeTo(marshaller, item)
 
     def readFrom(self, marshaller):
-        self.readPad(self.alignment)  # Padding for contents
+        marshaller.readPad(self.alignment)  # Padding for contents
 
-        return tuple(
+        #print('{} reading subtypes {}'.format(self, self.subtypes))
+        return self(*[
                 subtype.readFrom(marshaller)
                 for subtype in self.subtypes
-                )
+                ])
 
 
 class VARIANT(ContainerTypeDef):
@@ -464,10 +711,74 @@ class VARIANT(ContainerTypeDef):
     Type code: 118 (ASCII 'v')
 
     """
-    typeCode = 'v'
+    typeCode = b'v'
+    structFmt = b'B'  # We don't actually use this, so we just copy the one from SIGNATURE since it's our first member.
 
     def __init__(self):
-        super(VARIANT, self).__init__()
+        super(VARIANT, self).__init__(SIGNATURE())
+
+    class _VariantInstance(object):
+        __slots__ = ['type', 'value']
+
+        def __init__(self, type=NotSpecified, value=NotSpecified):
+            self.type = type
+            self.value = value
+
+        def __repr__(self):
+            return '{}({!r})'.format(self.type, self.value)
+
+    valueType = _VariantInstance
+
+    class _VariantDict(dict):
+        def __getitem__(self, key):
+            return super(VARIANT._VariantDict, self).__getitem__(key).value
+
+        def __setitem__(self, key, value):
+            if not isinstance(value, VARIANT._VariantInstance):
+                type = VARIANT._guessType(value)
+                value = VARIANT._VariantInstance(type, value)
+
+            super(VARIANT._VariantDict, self).__setitem__(key, value)
+
+    def __call__(self, type=NotSpecified, value=NotSpecified):
+        if type is NotSpecified:
+            if self.defaultValue is NotSpecified:
+                return self.valueType()
+
+            else:
+                return self.defaultValue
+
+        elif value is NotSpecified:
+            if self.defaultValue is NotSpecified or self.defaultValue.type != type:
+                return self.valueType(type)
+
+            else:
+                return self.defaultValue
+
+        else:
+            return self.valueType(type, value)
+
+    @classmethod
+    def _guessType(self, value):
+        #if isinstance(value, bytes):
+        #    warnings.warn('Guessing type SIGNATURE for a bytes value! Use VARIANT.valueType() here.',
+        #            UnicodeWarning, stacklevel=2)
+        #    return SIGNATURE()
+        #elif isinstance(value, unicode):
+        #    warnings.warn('Guessing type STRING for a unicode value! Use VARIANT.valueType() here.',
+        #            UnicodeWarning, stacklevel=2)
+        #    return STRING()
+        #else:
+            raise ValueError("Couldn't guess D-Bus type based on Python value {!r}!".format(value))
+
+    def writeTo(self, marshaller, data):
+        self.subtypes[0].writeTo(marshaller, data.type.toSignature())
+        data.type.writeTo(marshaller, data.value)
+
+    def readFrom(self, marshaller):
+        type = self.subtypes[0].readFrom(marshaller)[0]
+        value = type.readFrom(marshaller)
+        return self._VariantInstance(type, value)
 
 
 class DICT_ENTRY(STRUCT):
@@ -479,8 +790,8 @@ class DICT_ENTRY(STRUCT):
     dict-entry, and must not appear in signatures used on D-Bus.
 
     """
-    typeCode = '{'
-    endTypeCode = '}'
+    typeCode = b'{'
+    endTypeCode = b'}'
 
     def __init__(self, keyType, valueType):
         super(DICT_ENTRY, self).__init__(keyType, valueType)

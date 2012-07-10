@@ -171,9 +171,9 @@ class Message(object):
     @classmethod
     def parseMessage(cls, data):
         data = bytes(data)
-        if data[0] == b'l':
+        if data[0] in (b'l', ord(b'l')):
             byteOrder = b'<'  # Little endian
-        elif data[0] == b'B':
+        elif data[0] in (b'B', ord(b'B')):
             byteOrder = b'>'  # Big endian
         else:
             raise ValueError('Unrecognized endianness flag {!r}!'.format(data[0]))
@@ -190,13 +190,13 @@ class Message(object):
             body = [bodyType.readFrom(marshaller) for bodyType in bodyTypes]
 
         finally:
-            print('Ended reading at byte {}'.format(marshaller.tell()))
+            print('Ended reading at byte 0x{:X}'.format(marshaller.tell()))
             #marshaller.close()
 
         return Message(bodyTypes, body, header)
 
     def render(self):
-        if self.header.byteOrder == b'l':
+        if self.header.byteOrder in (b'l', ord(b'l')):
             byteOrder = b'<'
         else:
             byteOrder = b'>'
@@ -221,7 +221,7 @@ class Message(object):
             print("Rendering header...")
             self.headerType.writeTo(marshaller, self.header)
             marshaller.writePad(8)
-            print("Header ends at {}; copying body after header...".format(marshaller.tell()))
+            print("Header ends at 0x{:X}; copying body after header...".format(marshaller.tell()))
             marshaller.write(bodyMarshaller.getvalue())
 
             return marshaller.getvalue()
@@ -231,5 +231,5 @@ class Message(object):
 
         finally:
             bodyMarshaller.close()
-            print('Ended writing at byte {}'.format(marshaller.tell()))
+            print('Ended writing at byte 0x{:X}'.format(marshaller.tell()))
             marshaller.close()

@@ -15,6 +15,18 @@ from StringIO import StringIO
 NotSpecified = object()
 
 
+class Plural(object):
+    def __init__(self, value):
+        self.value = value
+
+    def __format__(self, fmt):
+        return self.value.__format__(fmt)
+
+    @property
+    def s(self):
+        return '' if self.value == 1 else 's'
+
+
 class Marshaller(StringIO):
     # Cache of Struct objects to speed up reading and writing messages.
     #TODO: Right now, we're pretty much always writing single values one at a time, instead of combining the message
@@ -40,8 +52,9 @@ class Marshaller(StringIO):
         padSize = self.padSize(alignment)
         if padSize == 0:
             return
-        print('{}: \033[90mWriting {} bytes of padding.\033[m'.format(self, padSize))
         self.write(b'\0' * padSize)  # Write (padSize) null bytes.
+        print('{0}: \033[90mWrote {1} byte{1.s} of padding at 0x{2:X}.\033[m'.format(
+                self, Plural(padSize), self.tell()))
 
     def discard(self, size):
         """Skip the next (size) bytes.
@@ -49,11 +62,12 @@ class Marshaller(StringIO):
         """
         if size == 0:
             return
-        print('{}: \033[33mDiscarding (skipping) {} bytes.\033[m'.format(self, size))
+        print('{0}: \033[33mDiscarding (skipping) {1} byte{1.s} at 0x{2:X}.\033[m'.format(
+                self, Plural(size), self.tell()))
         self.seek(size, mode=1)
 
     def seek(self, pos, mode=0):
-        print('{}: \033[34mseek({!r}, {!r}) from {!r}\033[m'.format(self, pos, mode, self.tell()))
+        print('{}: \033[34mseek(0x{:X}, {!r}) from 0x{:X}\033[m'.format(self, pos, mode, self.tell()))
         return StringIO.seek(self, pos, mode)
 
     def skip(self, fmt):
@@ -70,8 +84,8 @@ class Marshaller(StringIO):
         size = self.getStructFormatter(fmt).size
         if size == 0:
             return
-        print('{}: \033[33mWriting {} bytes of filler.\033[m'.format(self, size))
         self.write(b'\0' * size)  # Write (padSize) null bytes.
+        print('{0}: \033[33mWrote {1} byte{1.s} of filler at 0x{2:X}.\033[m'.format(self, Plural(size), self.tell()))
 
     def getStructFormatter(self, fmt):
         fmt = self.byteOrder + fmt
@@ -96,9 +110,9 @@ class Marshaller(StringIO):
 
         # Write the value(s).
         packed = formatter.pack(*values)
-        print('{}: \033[32mWriting {} bytes of data ({}) at {}: {!r}\033[m'.format(
-                self, formatter.size, fmt, self.tell(), packed))
         self.write(packed)
+        print('{0}: \033[32mWrote {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}\033[m'.format(
+                self, Plural(formatter.size), fmt, self.tell(), packed))
 
     def unpack(self, fmt, **kwargs):
         """Read one or more values using the given format and alignment.
@@ -115,8 +129,8 @@ class Marshaller(StringIO):
 
         # Read the value(s).
         packed = self.read(formatter.size)
-        print('{}: \033[32mRead {} bytes of data ({}) at {}: {!r}\033[m'.format(
-                self, formatter.size, fmt, self.tell(), packed))
+        print('{0}: \033[32mRead {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}\033[m'.format(
+                self, Plural(formatter.size), fmt, self.tell(), packed))
         unpacked = formatter.unpack(packed)
 
         if len(unpacked) == 1:

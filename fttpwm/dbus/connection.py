@@ -44,6 +44,11 @@ class Bus(object):
     def serverGUID(self):
         return self.serverUUID
 
+    @property
+    def machineID(self):
+        #FIXME: I have absolutely no idea how to get this! The spec doesn't seem to say.
+        return '07b6ac7a4c79d9b9628392f30000bea1'
+
     def parseAddressOptions(self, optionString):
         options = dict()
 
@@ -112,7 +117,7 @@ class Bus(object):
                         )
 
         self.logger.error("All supported authentication methods failed!")
-        return False
+        raise RuntimeError("All supported authentication methods failed!")
 
     def send(self, data):
         self.socket.send(data)

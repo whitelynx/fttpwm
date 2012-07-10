@@ -33,12 +33,12 @@ class Authenticator(object):
             data = data[0]
 
         self.logger.debug("Sending data: %r", data)
-        self.send(data)
+        self.bus.send(data)
 
     def sendData(self, *data):
         data = ' '.join(data)
 
-        self.bus.send('DATA', hexlify(data))
+        self.send('DATA', hexlify(data))
 
     def recv(self):
         response = self.bus.recv().split()
@@ -54,7 +54,7 @@ class Authenticator(object):
         if response[0] == 'OK':
             self.bus.serverUUID = response[1]
             self.logger.info("Authentication succeeded; beginning session.")
-            self.send('BEGIN')
+            self.send('BEGIN\r\n')
             return True
 
         elif response[0] == 'REJECTED':
@@ -71,8 +71,8 @@ class CookieSHA1Auth(Authenticator):
     name = 'DBUS_COOKIE_SHA1'
 
     def authenticate(self):
-        self.auth_send('AUTH', 'DBUS_COOKIE_SHA1', hexlify(getuser()))
-        cookieContext, cookieID, serverChallenge = self.auth_recv()
+        self.send('AUTH', 'DBUS_COOKIE_SHA1', hexlify(getuser()))
+        cookieContext, cookieID, serverChallenge = self.recv()
 
         cookiePath = joinpath(expanduser('~/.dbus-keyrings'), cookieContext)
         cookieFile = open(cookiePath, 'r')
@@ -89,15 +89,15 @@ class CookieSHA1Auth(Authenticator):
 
         clientChallenge = hexlify(os.urandom(24))
         responseHash = sha1('{}:{}:{}'.format(serverChallenge, clientChallenge, cookie)).hexdigest()
-        self.auth_sendData('{} {}'.format(clientChallenge, responseHash))
+        self.sendData('{} {}'.format(clientChallenge, responseHash))
 
-        return self.auth_checkSuccess()
+        return self.checkSuccess()
 
 
 class AnonymousAuth(Authenticator):
     name = 'ANONYMOUS'
 
     def authenticate(self):
-        self.auth_send('AUTH', 'ANONYMOUS')
+        self.send('AUTH', 'ANONYMOUS')
 
-        return self.auth_checkSuccess()
+        return self.checkSuccess()

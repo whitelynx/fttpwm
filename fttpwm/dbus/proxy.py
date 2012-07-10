@@ -109,6 +109,38 @@ def DBusInterface(name):
     return _DBusInterfaceNamed
 
 
+#####################################
+# I think it makes sense to aim for this:
+
+
+class PeerInterface(DBusInterface('org.freedesktop.DBus.Peer')):
+    def Ping(self):
+        pass
+
+    def GetMachineId(self):
+        #FIXME: How the hell do we find/generate this? The spec doesn't seem to mention it!
+        pass
+
+
+# Creating and registering a local object:
+class LocalPeer(DBusObjectImplementation):
+    peer = PeerInterface()
+
+localPeer = LocalPeer()
+bus.registerlocalObject(localPeer)
+
+
+# Creating and using a proxy for a remote object:
+class RemotePeer(DBusObjectProxy):
+    peer = PeerInterface()
+
+networkManager = RemotePeer('org.freedesktop.NetworkManager')
+networkManager.Ping()
+
+
+#####################################
+
+
 class _DBusMethod(object):
     def __init__(self, definitionFunc, name=None, ):
         self.name = name or self.definitionFunc.__name__

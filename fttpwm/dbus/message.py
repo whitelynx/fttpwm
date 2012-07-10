@@ -224,6 +224,7 @@ class Message(object):
             print("Header ends at 0x{:X}; copying body after header...".format(marshaller.tell()))
             marshaller.write(bodyMarshaller.getvalue())
 
+            print("Rendered message: {!r}".format(marshaller.getvalue()))
             return marshaller.getvalue()
 
         except IndexError:

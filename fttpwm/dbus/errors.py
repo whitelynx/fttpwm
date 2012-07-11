@@ -11,5 +11,17 @@ but for now it limits what you can connect to.
 """
 
 
-class AuthenticationError(Exception):
+class DBusError(Exception):
+    pass
+
+
+class MessageParseError(DBusError):
+    pass
+
+
+class AuthenticationError(DBusError):
+    pass
+
+
+class MethodCallError(DBusError):
     pass

@@ -19,7 +19,19 @@ bus = connection.SessionBus()
 bus.connect()
 
 
-def onReturn(response):
+def onGetCapabilitiesReturn(response):
+    logger.info("Got capabilities from notification daemon: %r.", response.body)
+
+
+bus.callMethod(
+        '/org/freedesktop/Notifications', 'GetCapabilities',
+        interface='org.freedesktop.Notifications',
+        destination='org.freedesktop.Notifications',
+        onReturn=onGetCapabilitiesReturn
+        )
+
+
+def onNotifyReturn(response):
     logger.info("Got response %r from notification daemon, with body %r.", response, response.body)
 
 
@@ -38,5 +50,5 @@ bus.callMethod(
             ],
         interface='org.freedesktop.Notifications',
         destination='org.freedesktop.Notifications',
-        onReturn=onReturn
+        onReturn=onNotifyReturn
         )

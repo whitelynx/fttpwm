@@ -17,12 +17,13 @@ import re
 import socket
 import urllib
 
+from .. import signals
 from ..utils import loggerFor
 
 from .auth import CookieSHA1Auth, AnonymousAuth
 #from .proxy import signal, method
 from . import message, types
-from .errors import MethodCallError, MessageParseError
+from .errors import MethodCallError
 
 
 logger = logging.getLogger('fttpwm.dbus.connection')
@@ -42,6 +43,8 @@ class Bus(object):
         self.serverUUID = None
         self.reportedAuthMechanisms = None
         self.uniqueID = None
+
+        self.disconnected = signals.Signal()
 
     @abstractproperty
     def address(self):
@@ -127,16 +130,22 @@ class Bus(object):
         raise RuntimeError("All supported authentication methods failed!")
 
     def sayHello(self):
-        self.uniqueID, = self.callMethod(
+        def onReturn(response):
+            self.uniqueID, = response.body
+
+            logger.info("Got unique name %r from message bus.", self.uniqueID)
+
+        self.callMethod(
                 '/org/freedesktop/DBus', 'Hello',
                 interface='org.freedesktop.DBus',
-                destination='org.freedesktop.DBus'
+                destination='org.freedesktop.DBus',
+                onReturn=onReturn
                 )
-        logger.info("Got unique name %r from message bus.", self.uniqueID)
 
         return True
 
-    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, bodyOnly=True):
+    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, onReturn=None,
+            onError=None, onException=None):
         msg = message.Message()
 
         h = msg.header
@@ -157,28 +166,33 @@ class Bus(object):
         self.send(msg.render())
 
         data = self.recv()
-        if not data:
-            logger.error("recv() returned %r; giving up.", data)
-            raise MethodCallError("No response received for method call!")
+        if len(data) == 0:
+            logger.error("Server disconnected! (recv() returned %r)", data)
+            self.disconnected()
 
         try:
             response = message.Message.parseMessage(data)
 
-        except:
+        except Exception as ex:
             logger.exception("Got exception while parsing response for %r method call on %r! Data = %r",
                     member, objectPath, data)
-            raise MessageParseError("Error parsing response to method call!")
+
+            if onException is not None:
+                onException(ex)
 
         else:
-            if response.header.messageType != message.Types.METHOD_RETURN:
+            if response.header.messageType == message.Types.ERROR:
+                if onError is not None:
+                    onError(response)
+
+            elif response.header.messageType == message.Types.METHOD_RETURN:
+                if onReturn is not None:
+                    onReturn(response)
+
+            else:
                 logger.error("Didn't get METHOD_RETURN for %r method call on %r! Response = %r",
                         member, objectPath, data)
-                raise MethodCallError("Response for method call wasn't METHOD_RETURN!")
-
-            if bodyOnly:
-                return response.body
-            else:
-                return response
+                onException(MethodCallError("Response for method call wasn't METHOD_RETURN!"))
 
     def send(self, data):
         self.socket.sendall(data)

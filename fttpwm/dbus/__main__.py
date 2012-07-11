@@ -8,21 +8,12 @@ Licensed under the MIT license; see the LICENSE file for details.
 """
 import logging
 
-from . import connection, message, types
+from . import connection
 
 
 logging.basicConfig(level=logging.NOTSET)
 
+logger = logging.getLogger("fttpwm.dbus.__main__")
+
 bus = connection.SessionBus()
 bus.connect()
-
-m = message.Message()
-m.header.messageType = message.Types.METHOD_CALL
-m.header.headerFields[message.HeaderFields.PATH] = types.VARIANT()(types.STRING(), '/org/freedesktop/DBus')
-m.header.headerFields[message.HeaderFields.INTERFACE] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
-m.header.headerFields[message.HeaderFields.MEMBER] = types.VARIANT()(types.STRING(), 'Hello')
-m.header.headerFields[message.HeaderFields.DESTINATION] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
-
-bus.send(m.render())
-
-print(message.Message.parseMessage(bus.recv()))

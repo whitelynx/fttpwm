@@ -207,6 +207,15 @@ class TypeDef(object):
         else:
             return self.valueType(value)
 
+    def __repr__(self):
+        if self.defaultValue is NotSpecified:
+            return '<{}>'.format(self.__class__.__name__)
+        else:
+            return '<{} default={}>'.format(self.__class__.__name__, self.defaultValue)
+
+    def __unicode__(self):
+        return self.__class__.__name__
+
     @classmethod
     def fromSignature(cls, parser):
         return cls()
@@ -739,7 +748,7 @@ class VARIANT(ContainerTypeDef):
             self.value = value
 
         def __repr__(self):
-            return '{}({!r})'.format(self.type, self.value)
+            return '{!s}({!r})'.format(self.type, self.value)
 
     valueType = _VariantInstance
 

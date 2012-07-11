@@ -233,4 +233,5 @@ class Message(object):
         finally:
             bodyMarshaller.close()
             print('Ended writing at byte 0x{:X}'.format(marshaller.tell()))
+            print('Sent message: {!r}'.format(self))
             marshaller.close()

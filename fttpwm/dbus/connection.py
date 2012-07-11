@@ -10,6 +10,7 @@ but for now it limits what you can connect to.
 
 """
 from abc import ABCMeta, abstractproperty
+import logging
 import os
 from os.path import exists, expanduser
 import re
@@ -20,6 +21,10 @@ from ..utils import loggerFor
 
 from .auth import CookieSHA1Auth, AnonymousAuth
 #from .proxy import signal, method
+from . import message, types
+
+
+logger = logging.getLogger('fttpwm.dbus.connection')
 
 
 class Bus(object):
@@ -35,6 +40,7 @@ class Bus(object):
 
         self.serverUUID = None
         self.reportedAuthMechanisms = None
+        self.uniqueID = None
 
     @abstractproperty
     def address(self):
@@ -79,9 +85,9 @@ class Bus(object):
                 try:
                     self.socket = socket.socket(socket.AF_UNIX)
                     self.socket.connect(socketAddress)
-                    self.socket.send('\0')
+                    self.send('\0')
 
-                    return self.authenticate()
+                    return self.authenticate() and self.sayHello()
 
                 except socket.error:
                     continue
@@ -119,8 +125,37 @@ class Bus(object):
         self.logger.error("All supported authentication methods failed!")
         raise RuntimeError("All supported authentication methods failed!")
 
+    def sayHello(self):
+        m = message.Message()
+        m.header.messageType = message.Types.METHOD_CALL
+        m.header.headerFields[message.HeaderFields.PATH] = types.VARIANT()(types.OBJECT_PATH(), '/org/freedesktop/DBus')
+        m.header.headerFields[message.HeaderFields.INTERFACE] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
+        m.header.headerFields[message.HeaderFields.MEMBER] = types.VARIANT()(types.STRING(), 'Hello')
+        m.header.headerFields[message.HeaderFields.DESTINATION] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
+
+        self.send(m.render())
+
+        data = self.recv()
+
+        if not data:
+            logger.error("recv() returned %r; giving up.", data)
+            raise ValueError("No response received from message bus on Hello!")
+
+        try:
+            response = message.Message.parseMessage(data)
+
+        except:
+            logger.exception("Got exception while parsing! Data = %r", data)
+            raise
+
+        else:
+            logger.debug("Got response: %r", response)
+            self.uniqueID = response.body[0]
+            logger.info("Got unique name %r from message bus.", self.uniqueID)
+            return True
+
     def send(self, data):
-        self.socket.send(data)
+        self.socket.sendall(data)
 
     def recv(self):
         return self.socket.recv(2048)

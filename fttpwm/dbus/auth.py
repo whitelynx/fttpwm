@@ -1,3 +1,15 @@
+# -*- cod-ing: utf-8 -*-
+from __future__ import unicode_literals
+"""FTTPWM: D-Bus SASL authentication
+
+Copyright (c) 2012 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+When I wrote this, I didn't see the note in the spec that this is actually a SASL profile. It may make sense to find a
+generalized SASL library for Python and use it instead of this code, though if at all possible it should be pure Python
+(not a wrapper for a C/C++ library) to cut down on the number of binary dependencies needed.
+
+"""
 from abc import ABCMeta, abstractmethod, abstractproperty
 from binascii import hexlify, unhexlify
 from getpass import getuser

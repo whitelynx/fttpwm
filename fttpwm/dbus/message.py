@@ -8,7 +8,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 """
 import sys
 
-from .types import Marshaller, parseSignature, parseSignatures, SIGNATURE, VARIANT
+from .types import Marshaller, parseSignature, parseSignatures, Signature, Variant
 
 
 class Types(object):
@@ -166,7 +166,7 @@ class Message(object):
 
     @property
     def bodySignature(self):
-        return VARIANT()(SIGNATURE(), ''.join(bt.toSignature() for bt in self.bodyTypes))
+        return Variant(Signature, ''.join(bt.toSignature() for bt in self.bodyTypes))
 
     @classmethod
     def parseMessage(cls, data):

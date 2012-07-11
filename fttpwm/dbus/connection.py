@@ -22,6 +22,7 @@ from ..utils import loggerFor
 from .auth import CookieSHA1Auth, AnonymousAuth
 #from .proxy import signal, method
 from . import message, types
+from .errors import MethodCallError, MessageParseError
 
 
 logger = logging.getLogger('fttpwm.dbus.connection')
@@ -126,33 +127,58 @@ class Bus(object):
         raise RuntimeError("All supported authentication methods failed!")
 
     def sayHello(self):
-        m = message.Message()
-        m.header.messageType = message.Types.METHOD_CALL
-        m.header.headerFields[message.HeaderFields.PATH] = types.VARIANT()(types.OBJECT_PATH(), '/org/freedesktop/DBus')
-        m.header.headerFields[message.HeaderFields.INTERFACE] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
-        m.header.headerFields[message.HeaderFields.MEMBER] = types.VARIANT()(types.STRING(), 'Hello')
-        m.header.headerFields[message.HeaderFields.DESTINATION] = types.VARIANT()(types.STRING(), 'org.freedesktop.DBus')
+        self.uniqueID, = self.callMethod(
+                '/org/freedesktop/DBus', 'Hello',
+                interface='org.freedesktop.DBus',
+                destination='org.freedesktop.DBus'
+                )
+        logger.info("Got unique name %r from message bus.", self.uniqueID)
 
-        self.send(m.render())
+        return True
+
+    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, bodyOnly=True):
+        msg = message.Message()
+
+        h = msg.header
+        h.messageType = message.Types.METHOD_CALL
+
+        h.headerFields[message.HeaderFields.PATH] = types.Variant(types.ObjectPath, objectPath)
+        h.headerFields[message.HeaderFields.MEMBER] = types.Variant(types.String, member)
+
+        if inSignature != '':
+            h.headerFields[message.HeaderFields.SIGNATURE] = types.Variant(types.Signature, inSignature)
+        if interface is not None:
+            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(types.String, interface)
+        if destination is not None:
+            h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(types.String, destination)
+
+        msg.body = args
+
+        self.send(msg.render())
 
         data = self.recv()
-
         if not data:
             logger.error("recv() returned %r; giving up.", data)
-            raise ValueError("No response received from message bus on Hello!")
+            raise MethodCallError("No response received for method call!")
 
         try:
             response = message.Message.parseMessage(data)
 
         except:
-            logger.exception("Got exception while parsing! Data = %r", data)
-            raise
+            logger.exception("Got exception while parsing response for %r method call on %r! Data = %r",
+                    member, objectPath, data)
+            raise MessageParseError("Error parsing response to method call!")
 
         else:
-            logger.debug("Got response: %r", response)
-            self.uniqueID = response.body[0]
-            logger.info("Got unique name %r from message bus.", self.uniqueID)
-            return True
+            if response.header.messageType != message.Types.METHOD_RETURN:
+                logger.error("Didn't get METHOD_RETURN for %r method call on %r! Response = %r",
+                        member, objectPath, data)
+                raise MethodCallError("Response for method call wasn't METHOD_RETURN!")
+
+            if bodyOnly:
+                return response.body
+            else:
+                return response
 
     def send(self, data):
         self.socket.sendall(data)

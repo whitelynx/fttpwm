@@ -118,7 +118,6 @@ class PeerInterface(DBusInterface('org.freedesktop.DBus.Peer')):
         pass
 
     def GetMachineId(self):
-        #FIXME: How the hell do we find/generate this? The spec doesn't seem to mention it!
         pass
 
 
@@ -126,15 +125,24 @@ class PeerInterface(DBusInterface('org.freedesktop.DBus.Peer')):
 class LocalPeer(DBusObjectImplementation):
     peer = PeerInterface()
 
-localPeer = LocalPeer()
-bus.registerlocalObject(localPeer)
+    @peer.Ping
+    def peer_Ping(self):
+        # This should generate an empty METHOD_RETURN message.
+        pass
+
+    @peer.GetMachineId
+    def peer_GetMachineId(self):
+        #FIXME: How the hell do we find/generate this? The spec doesn't seem to mention it!
+        return '07b6ac7a4c79d9b9628392f30000bea1'
+
+localPeer = LocalPeer(bus)
 
 
 # Creating and using a proxy for a remote object:
 class RemotePeer(DBusObjectProxy):
     peer = PeerInterface()
 
-networkManager = RemotePeer('org.freedesktop.NetworkManager')
+networkManager = RemotePeer(bus, 'org.freedesktop.NetworkManager')
 networkManager.Ping()
 
 

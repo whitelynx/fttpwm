@@ -412,7 +412,7 @@ class STRING(BasicTypeDef):
     def writeTo(self, marshaller, data):
         marshaller.pack(self.structFmt, len(data))  # String length in bytes, excluding terminating null
         marshaller.write(data.encode('UTF-8'))  # String data
-        marshaller.write('\0')  # Terminating null byte
+        marshaller.write(b'\0')  # Terminating null byte
 
     def readFrom(self, marshaller):
         length = marshaller.unpack(self.structFmt)  # String length in bytes, excluding terminating null

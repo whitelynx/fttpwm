@@ -109,11 +109,40 @@ def DBusInterface(name):
     return _DBusInterfaceNamed
 
 
-#####################################
+# Suggested package layout:
+#
+# dbus  # Top-level package
+#
+#     proto  # Low-level wire protocol
+#         class Message
+#
+#     server  # Pure client/server-oriented connections
+#         class Connection
+#
+#         auth  # Authentication protocol
+#             class Authenticator
+#
+#     bus  # Message bus connections
+#         class Bus(..server.Connection)
+#
+#     interface  # Interface definition classes
+#         class Interface
+#         class Method
+#         class Signal
+#         class Property
+#
+#     remote  # Proxy classes for remote objects
+#         class Object
+#
+#     local  # Classes for implementing exported local objects
+#         class Object
+
+
+##########################################
 # I think it makes sense to aim for this:
 
 
-class PeerInterface(DBusInterface('org.freedesktop.DBus.Peer')):
+class PeerInterface(dbus.interface.Interface('org.freedesktop.DBus.Peer')):
     def Ping(self):
         pass
 
@@ -121,32 +150,130 @@ class PeerInterface(DBusInterface('org.freedesktop.DBus.Peer')):
         pass
 
 
-# Creating and registering a local object:
-class LocalPeer(DBusObjectImplementation):
-    peer = PeerInterface()
-
-    @peer.Ping
+# Creating and exporting a local object:
+class LocalPeer(dbus.local.Object):
+    @PeerInterface.Ping
     def peer_Ping(self):
         # This should generate an empty METHOD_RETURN message.
         pass
 
-    @peer.GetMachineId
+    @PeerInterface.GetMachineId
     def peer_GetMachineId(self):
         #FIXME: How the hell do we find/generate this? The spec doesn't seem to mention it!
         return '07b6ac7a4c79d9b9628392f30000bea1'
 
-localPeer = LocalPeer(bus)
+localPeer = LocalPeer(bus, '/org/freedesktop/DBus/Peer')
 
 
 # Creating and using a proxy for a remote object:
-class RemotePeer(DBusObjectProxy):
+class RemotePeer(dbus.remote.Object):
     peer = PeerInterface()
 
-networkManager = RemotePeer(bus, 'org.freedesktop.NetworkManager')
+networkManager = RemotePeer(bus, '/org/freedesktop/NetworkManager', 'org.freedesktop.NetworkManager')
 networkManager.Ping()
 
 
-#####################################
+# Or, an alternate for remote object proxies:
+
+networkManager = bus.remoteObject('/org/freedesktop/NetworkManager', PeerInterface, bus_name='org.freedesktop.NetworkManager')
+networkManager.Ping()
+
+
+##########################################
+
+
+#### Example exported local object from dbus-python's dbus.service.Object's docstring (corrected) ####
+
+class Example(dbus.service.Object):
+    def __init__(self, object_path):
+        dbus.service.Object.__init__(self, dbus.SessionBus(), object_path)
+        self._last_input = None
+
+    @dbus.service.method(interface='com.example.Sample', in_signature='v', out_signature='s')
+    def StringifyVariant(self, var):
+        self.LastInputChanged(var)      # emits the signal
+        return str(var)
+
+    @dbus.service.signal(interface='com.example.Sample', signature='v')
+    def LastInputChanged(self, var):
+        # run just before the signal is actually emitted
+        # just put "pass" if nothing should happen
+        self._last_input = var
+
+    @dbus.service.method(interface='com.example.Sample', in_signature='', out_signature='v')
+    def GetLastInput(self):
+        return self._last_input
+
+
+#### Our version of the above example ####
+
+# The interface:
+class SampleInterface(DBusInterface('com.example.Sample')):
+    @dbus.interface.Method(in_signature='v', out_signature='s')
+    def StringifyVariant(self, var):
+        pass
+
+    @dbus.interface.Signal(signature='v')
+    def LastInputChanged(self, var):
+        pass
+
+    @dbus.interface.Method(in_signature='', out_signature='v')
+    def GetLastInput(self):
+        pass
+
+
+# Or, alternate way of defining the interface: (we can't support both this and the above; not sure which I like better)
+class SampleInterface(DBusInterface('com.example.Sample')):
+    StringifyVariant = dbus.interface.Method(in_signature='v', out_signature='s')
+    LastInputChanged = dbus.interface.Signal(signature='v')
+    GetLastInput = dbus.interface.Method(in_signature='', out_signature='v')
+
+
+# The exported object:
+class Example(dbus.local.Object):
+    def __init__(self, object_path):
+        super(Example, self).__init__(dbus.SessionBus(), path)
+        self._last_input = None
+
+    @SampleInterface.StringifyVariant
+    def StringifyVariant(self, var):
+        self.LastInputChanged(var)  # emits the signal
+        return str(var)
+
+    @SampleInterface.LastInputChanged
+    def LastInputChanged(self, var):
+        # run just before the signal is actually emitted
+        # just put "pass" if nothing should happen
+        self._last_input = var
+
+    @SampleInterface.GetLastInput
+    def GetLastInput(self):
+        return self._last_input
+
+
+# Alternate way of defining the object: (pretty sure I like this better than the above, but both can be supported)
+class Example(bus.localObject):
+    def __init__(self, object_path):
+        super(Example, self).__init__(object_path)
+        self._last_input = None
+
+    @SampleInterface.StringifyVariant
+    def StringifyVariant(self, var):
+        self.LastInputChanged(var)  # emits the signal
+        return str(var)
+
+    @SampleInterface.LastInputChanged
+    def LastInputChanged(self, var):
+        # run just before the signal is actually emitted
+        # just put "pass" if nothing should happen
+        self._last_input = var
+
+    @SampleInterface.GetLastInput
+    def GetLastInput(self):
+        return self._last_input
+
+
+##########################################
 
 
 class _DBusMethod(object):

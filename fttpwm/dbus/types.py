@@ -287,6 +287,8 @@ class BYTE(IntegerTypeDef):
     def readFrom(self, marshaller):
         return self.valueType(marshaller.unpack(self.structFmt))
 
+Byte = BYTE()
+
 
 class BOOLEAN(BasicTypeDef):
     """Boolean value, 0 is FALSE and 1 is TRUE. Everything else is invalid.
@@ -298,6 +300,8 @@ class BOOLEAN(BasicTypeDef):
     structFmt = b'xxx?'  # BOOLEAN in the spec is 32-bit, but Python's struct module only uses 8 bits; add padding.
     valueType = bool
 
+Boolean = BOOLEAN()
+
 
 class INT16(IntegerTypeDef):
     """16-bit signed integer
@@ -307,6 +311,8 @@ class INT16(IntegerTypeDef):
     """
     typeCode = b'n'
     structFmt = b'h'
+
+Int16 = INT16()
 
 
 class UINT16(IntegerTypeDef):
@@ -318,6 +324,8 @@ class UINT16(IntegerTypeDef):
     typeCode = b'q'
     structFmt = b'H'
 
+UInt16 = UINT16()
+
 
 class INT32(IntegerTypeDef):
     """32-bit signed integer
@@ -327,6 +335,8 @@ class INT32(IntegerTypeDef):
     """
     typeCode = b'i'
     structFmt = b'i'
+
+Int32 = INT32()
 
 
 class UINT32(IntegerTypeDef):
@@ -338,6 +348,8 @@ class UINT32(IntegerTypeDef):
     typeCode = b'u'
     structFmt = b'I'
 
+UInt32 = UINT32()
+
 
 class INT64(IntegerTypeDef):
     """64-bit signed integer
@@ -348,6 +360,8 @@ class INT64(IntegerTypeDef):
     typeCode = b'x'
     structFmt = b'q'
 
+Int64 = INT64()
+
 
 class UINT64(IntegerTypeDef):
     """64-bit unsigned integer
@@ -357,6 +371,8 @@ class UINT64(IntegerTypeDef):
     """
     typeCode = b't'
     structFmt = b'Q'
+
+UInt64 = UINT64()
 
 
 class DOUBLE(BasicTypeDef):
@@ -369,6 +385,8 @@ class DOUBLE(BasicTypeDef):
     structFmt = b'd'
     valueType = float
 
+Double = DOUBLE()
+
 
 class UNIX_FD(IntegerTypeDef):
     """Unix file descriptor
@@ -378,6 +396,8 @@ class UNIX_FD(IntegerTypeDef):
     """
     typeCode = b'h'
     structFmt = b'I'
+
+UnixFD = UNIX_FD()
 
 
 class STRING(BasicTypeDef):
@@ -400,6 +420,8 @@ class STRING(BasicTypeDef):
         marshaller.discard(1)  # Discard terminating null byte.
         return self(data)
 
+String = STRING()
+
 
 class OBJECT_PATH(STRING):
     """Name of an object instance
@@ -408,6 +430,8 @@ class OBJECT_PATH(STRING):
 
     """
     typeCode = b'o'
+
+ObjectPath = OBJECT_PATH()
 
 
 class SIGNATURE(STRING):
@@ -421,6 +445,8 @@ class SIGNATURE(STRING):
 
     def valueType(self, value):
         return parseSignatures(value)
+
+Signature = SIGNATURE()
 
 
 class ContainerTypeDef(TypeDef):
@@ -738,7 +764,7 @@ class VARIANT(ContainerTypeDef):
     structFmt = b'B'  # We don't actually use this, so we just copy the one from SIGNATURE since it's our first member.
 
     def __init__(self):
-        super(VARIANT, self).__init__(SIGNATURE())
+        super(VARIANT, self).__init__(Signature)
 
     class _VariantInstance(object):
         __slots__ = ['type', 'value']
@@ -784,13 +810,13 @@ class VARIANT(ContainerTypeDef):
     @classmethod
     def _guessType(self, value):
         #if isinstance(value, bytes):
-        #    warnings.warn('Guessing type SIGNATURE for a bytes value! Use VARIANT.valueType() here.',
+        #    warnings.warn('Guessing type Signature for a bytes value! Use Variant.valueType() here.',
         #            UnicodeWarning, stacklevel=2)
-        #    return SIGNATURE()
+        #    return Signature
         #elif isinstance(value, unicode):
-        #    warnings.warn('Guessing type STRING for a unicode value! Use VARIANT.valueType() here.',
+        #    warnings.warn('Guessing type String for a unicode value! Use Variant.valueType() here.',
         #            UnicodeWarning, stacklevel=2)
-        #    return STRING()
+        #    return String
         #else:
             raise ValueError("Couldn't guess D-Bus type based on Python value {!r}!".format(value))
 
@@ -802,6 +828,8 @@ class VARIANT(ContainerTypeDef):
         type = self.subtypes[0].readFrom(marshaller)[0]
         value = type.readFrom(marshaller)
         return self._VariantInstance(type, value)
+
+Variant = VARIANT()
 
 
 class DICT_ENTRY(STRUCT):

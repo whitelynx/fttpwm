@@ -146,7 +146,7 @@ class Bus(object):
 
     def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, onReturn=None,
             onError=None, onException=None):
-        msg = message.Message()
+        msg = message.Message(inSignature)
 
         h = msg.header
         h.messageType = message.Types.METHOD_CALL
@@ -154,8 +154,6 @@ class Bus(object):
         h.headerFields[message.HeaderFields.PATH] = types.Variant(types.ObjectPath, objectPath)
         h.headerFields[message.HeaderFields.MEMBER] = types.Variant(types.String, member)
 
-        if inSignature != '':
-            h.headerFields[message.HeaderFields.SIGNATURE] = types.Variant(types.Signature, inSignature)
         if interface is not None:
             h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(types.String, interface)
         if destination is not None:

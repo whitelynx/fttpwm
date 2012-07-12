@@ -6,6 +6,7 @@ import logging
 import select
 import sys
 import time
+import warnings
 
 from .base import BaseEventLoop, StreamEvents
 
@@ -17,6 +18,7 @@ streamEventsToPollEvents = {
         StreamEvents.INCOMING: select.POLLIN,
         StreamEvents.OUTGOING: select.POLLOUT,
         }
+pollEventsToStreamEvents = dict((v, k) for k, v in streamEventsToPollEvents.iteritems())
 
 
 class PollEventLoop(BaseEventLoop):
@@ -56,7 +58,7 @@ class PollEventLoop(BaseEventLoop):
     def timeToNextTimer(self):
         return self.timers[0] - time.time()
 
-    def register(self, stream, handler, event=StreamEvents.INCOMING):
+    def register(self, stream, handler, events=(StreamEvents.INCOMING, ), event=None):
         """Register a `handler` for a given `event` on the given `stream`.
 
         `handler` will be called with `stream` and `event` as arguments.
@@ -71,9 +73,21 @@ class PollEventLoop(BaseEventLoop):
             # Stupid xpyb not conforming to the file-like object protocol.
             fd = stream.get_file_descriptor()
 
-        key = fd, streamEventsToPollEvents[event]
+        if event is not None:
+            warnings.warn("'event' is deprecated! Use 'events' instead.", DeprecationWarning)
+            events = [event]
+
+        events = sum(streamEventsToPollEvents[event] for event in events)
+
+        def callHandler(fd, evt):
+            try:
+                handler(stream, pollEventsToStreamEvents[evt])
+            except KeyError:
+                warnings.warn("Unrecognized poll event: {!r}".format(evt), RuntimeWarning)
+
+        key = fd, events
         self.poll.register(*key)
-        self.handlers[key] = lambda fd, evt: handler(stream, evt)
+        self.handlers[key] = callHandler
 
     def missingHandler(self, fd, evt):
         logger.error("Couldn't find handler for event %r on descriptor %r!", evt, fd)

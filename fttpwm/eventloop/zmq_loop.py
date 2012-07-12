@@ -2,11 +2,7 @@
 
 """
 import logging
-from datetime import timedelta
-
-import errno
-import functools
-import socket
+import warnings
 
 import zmq
 import zmq.eventloop.ioloop
@@ -17,7 +13,7 @@ from .base import BaseEventLoop, StreamEvents
 logger = logging.getLogger("fttpwm.eventloop.zmq_loop")
 
 
-ioLoopEventsToPollEvents = {
+streamEventsToZMQEvents = {
         StreamEvents.INCOMING: zmq.eventloop.ioloop.IOLoop.READ,
         StreamEvents.OUTGOING: zmq.eventloop.ioloop.IOLoop.WRITE,
         }
@@ -67,7 +63,7 @@ class ZMQEventLoop(BaseEventLoop):
                 )
         cb.start()
 
-    def register(self, stream, handler, event=StreamEvents.INCOMING):
+    def register(self, stream, handler, events=(StreamEvents.INCOMING, ), event=None):
         """Register a `handler` for a given `event` on the given `stream`.
 
         `handler` will be called with `stream` and `event` as arguments.
@@ -82,7 +78,18 @@ class ZMQEventLoop(BaseEventLoop):
             # Stupid xpyb not conforming to the file-like object protocol.
             fd = stream.get_file_descriptor()
 
-        self.io_loop.add_handler(fd, lambda fd, evt: handler(stream, evt), ioLoopEventsToPollEvents[event])
+        if event is not None:
+            warnings.warn("'event' is deprecated! Use 'events' instead.", DeprecationWarning)
+            events = [event]
+
+        events = sum(streamEventsToZMQEvents[event] for event in events)
+
+        def callHandler(fd, evt):
+            for streamEvt, zmqEvt in streamEventsToZMQEvents.iteritems():
+                if evt & zmqEvt:
+                    handler(stream, streamEvt)
+
+        self.io_loop.add_handler(fd, callHandler, events)
 
     def isRunning(self):
         """Check whether the event loop is currently running.

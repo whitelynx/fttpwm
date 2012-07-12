@@ -25,3 +25,7 @@ class AuthenticationError(DBusError):
 
 class MethodCallError(DBusError):
     pass
+
+
+class NotEnoughData(DBusError):
+    pass

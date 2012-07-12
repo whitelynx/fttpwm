@@ -6,9 +6,15 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+import logging
+import struct
 import sys
 
+from .errors import NotEnoughData
 from .types import Marshaller, parseSignature, parseSignatures, Signature, Variant
+
+
+logger = logging.getLogger('fttpwm.dbus.message')
 
 
 class Types(object):
@@ -169,7 +175,23 @@ class Message(object):
         return Variant(Signature, ''.join(bt.toSignature() for bt in self.bodyTypes))
 
     @classmethod
-    def parseMessage(cls, data):
+    def parseFile(cls, file):
+        pos = file.tell()
+        endianFlag = file.read(1)
+        logger.debug("Seeking back to position %r", pos)
+        file.seek(pos)
+        logger.debug("endianFlag=%r", endianFlag)
+        if endianFlag in (b'l', ord(b'l')):
+            byteOrder = b'<'  # Little endian
+        elif endianFlag in (b'B', ord(b'B')):
+            byteOrder = b'>'  # Big endian
+        else:
+            raise ValueError('Unrecognized endianness flag {!r}!'.format(endianFlag))
+
+        return cls.parseFromMarshaller(Marshaller(file, byteOrder))
+
+    @classmethod
+    def parseString(cls, data):
         data = bytes(data)
         if data[0] in (b'l', ord(b'l')):
             byteOrder = b'<'  # Little endian
@@ -178,12 +200,28 @@ class Message(object):
         else:
             raise ValueError('Unrecognized endianness flag {!r}!'.format(data[0]))
 
-        marshaller = Marshaller(data, byteOrder)
+        return cls.parseFromMarshaller(Marshaller(data, byteOrder))
 
+    @classmethod
+    def parseFromMarshaller(cls, marshaller):
         try:
+            logger.debug("Marshaller is at position %r.", marshaller.tell())
             print("Reading header...")
-            header = cls.headerType.readFrom(marshaller)
+            try:
+                header = cls.headerType.readFrom(marshaller)
+            except struct.error:
+                raise NotEnoughData
+
             marshaller.readPad(8)
+
+            # Make sure we have enough data to read the whole message.
+            bodyStart = marshaller.tell()
+            marshaller.seek(bodyStart + header.length)
+
+            if marshaller.tell() != bodyStart + header.length:
+                raise NotEnoughData
+
+            marshaller.seek(bodyStart)
 
             bodyTypes = header.headerFields[HeaderFields.SIGNATURE]
             print("Reading body...")
@@ -191,18 +229,18 @@ class Message(object):
 
         finally:
             print('Ended reading at byte 0x{:X}'.format(marshaller.tell()))
-            #marshaller.close()
+            marshaller.close()
 
         return Message(bodyTypes, body, header)
 
-    def render(self):
+    def render(self, target=None):
         if self.header.byteOrder in (b'l', ord(b'l')):
             byteOrder = b'<'
         else:
             byteOrder = b'>'
 
         bodyMarshaller = Marshaller(byteOrder=byteOrder)
-        marshaller = Marshaller(byteOrder=byteOrder)
+        marshaller = Marshaller(target, byteOrder=byteOrder)
 
         try:
             # Write the body to its own marshaller so we can determine its length.
@@ -214,18 +252,21 @@ class Message(object):
             Message._lastSerial += 1
             self.header.serial = Message._lastSerial
 
-            self.header.length = bodyMarshaller.len
+            self.header.length = bodyMarshaller.tell()
             self.header.headerFields[HeaderFields.SIGNATURE] = self.bodySignature
 
             # Write to the main marshaller.
             print("Rendering header...")
+            assert marshaller.file.tell() == 0
             self.headerType.writeTo(marshaller, self.header)
             marshaller.writePad(8)
             print("Header ends at 0x{:X}; copying body after header...".format(marshaller.tell()))
-            marshaller.write(bodyMarshaller.getvalue())
+            marshaller.write(bodyMarshaller.file.getvalue())
 
-            print("Rendered message: {!r}".format(marshaller.getvalue()))
-            return marshaller.getvalue()
+            if target is None:
+                print("Rendered message: {!r}".format(marshaller.file.getvalue()))
+                print("Re-parsed: {!r}".format(self.parseString(marshaller.file.getvalue())))
+                return marshaller.file.getvalue()
 
         except IndexError:
             raise RuntimeError("Message can't be rendered unless a full body is set!")

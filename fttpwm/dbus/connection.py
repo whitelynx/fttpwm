@@ -9,49 +9,143 @@ NOTE: This implementation ONLY supports UNIX domain sockets currently. This will
 but for now it limits what you can connect to.
 
 """
-from abc import ABCMeta, abstractproperty
+from cStringIO import StringIO
+import errno
+import io
 import logging
 import os
 from os.path import exists, expanduser
 import re
 import socket
 import urllib
+import warnings
 
-from .. import signals
+from .. import signals, singletons
 from ..utils import loggerFor
+from ..eventloop.base import StreamEvents
 
 from .auth import CookieSHA1Auth, AnonymousAuth
 #from .proxy import signal, method
 from . import message, types
-from .errors import MethodCallError
+from .errors import NotEnoughData
 
 
 logger = logging.getLogger('fttpwm.dbus.connection')
 
 
-class Bus(object):
-    __metaclass__ = ABCMeta
+class RWBuffer(object):
+    READ = object()
+    WRITE = object()
 
+    class _BaseInterface(io.IOBase):
+        def __init__(self, rwBuf):
+            self.rwBuf = rwBuf
+            self.position = 0
+
+        def seekable(self):
+            return True
+
+        def seek(self, pos, mode=0):
+            self.rwBuf.buffer.seek(pos, mode)
+
+            if mode == 0:
+                self.position = pos
+            elif mode == 1:
+                self.position += pos
+            else:
+                self.position = self.rwBuf.buffer.tell()
+
+            return self.position
+
+        def tell(self):
+            return self.position
+
+    class _ReadInterface(_BaseInterface):
+        def readable(self):
+            return True
+
+        def read(self, n=-1):
+            self.rwBuf._ensureMode(RWBuffer.READ, self.position)
+            data = self.rwBuf.buffer.read(n)
+            self.position += len(data)
+            return data
+
+    class _WriteInterface(_BaseInterface):
+        def writable(self):
+            return True
+
+        def write(self, s):
+            if not isinstance(s, bytes):
+                warnings.warn("Non-bytes object being written to RWBuffer!", BytesWarning)
+
+            self.rwBuf._ensureMode(RWBuffer.WRITE, self.position)
+            self.rwBuf.buffer.write(s)
+            self.position += len(s)
+
+    def _ensureMode(self, mode, curPosition):
+        if self.currentMode != mode:
+            self.currentMode = mode
+            self.buffer.seek(curPosition)
+
+    def __init__(self):
+        self.buffer = StringIO()
+        self.reader = self._ReadInterface(self)
+        self.writer = self._WriteInterface(self)
+        self.currentMode = self.READ
+
+    def clearReadData(self):
+        assert self.reader.position <= self.writer.position
+
+        logger.debug("RWBuffer: Clearing read data.")
+
+        oldBuffer = self.buffer
+        oldBuffer.seek(self.reader.position)
+
+        self.writer.position -= self.reader.position
+        self.reader.position = 0
+
+        self.buffer = StringIO()
+        self.buffer.write(oldBuffer.read())
+        self.buffer.seek(0)
+        self.currentMode = self.READ
+
+
+class Callbacks(object):
+    def __init__(self, onReturn=None, onError=None):
+        self.onReturn = onReturn or (lambda response: None)
+        self.onError = onError or (lambda response: None)
+
+
+class Connection(object):
     authenticators = [
             CookieSHA1Auth,
             AnonymousAuth
             ]
 
-    def __init__(self):
+    def __init__(self, address=None):
         self.logger = loggerFor(self)
 
         self.serverUUID = None
         self.reportedAuthMechanisms = None
         self.uniqueID = None
+        self.callbacks = dict()
+        self.isAuthenticated = False
 
+        self.incoming = RWBuffer()
+        self.outgoing = RWBuffer()
+
+        self.connected = signals.Signal()
+        self.authenticated = signals.Signal()
         self.disconnected = signals.Signal()
 
-    @abstractproperty
-    def address(self):
-        pass
+        if address is not None:
+            self.connect(address)
 
     @property
     def serverGUID(self):
+        """Alternate name for serverUUID, for backwards compatability.
+
+        """
         return self.serverUUID
 
     @property
@@ -68,84 +162,102 @@ class Bus(object):
 
         return options
 
-    def connect(self, address=None):
-        if address is None:
-            address = self.address
+    def connect(self, addresses):
+        addresses = addresses.split(';')
+        self.logger.debug("Attempting to connect to addresses:\n  %s", '\n  '.join(addresses))
+        self.addressIter = iter(addresses)
+        self.nextConnection()
 
-        for addr in address.split(';'):
-            transport, options = addr.split(':', 1)
+    def nextConnection(self):
+        try:
+            self.address = self.addressIter.next()
+        except StopIteration:
+            self.logger.error("Couldn't connect to any D-Bus servers! Giving up.")
+            raise RuntimeError("Couldn't connect to any D-Bus servers! Giving up.")
 
-            if transport == 'unix':
-                options = self.parseAddressOptions(options)
+        self.authenticatorIter = iter(self.authenticators)
 
-                try:
-                    socketAddress = options['path']
-                except KeyError:
-                    try:
-                        socketAddress = '\0' + options['abstract']
-                    except KeyError:
-                        continue
+        transport, options = self.address.split(':', 1)
 
-                try:
-                    self.socket = socket.socket(socket.AF_UNIX)
-                    self.socket.connect(socketAddress)
-                    self.send('\0')
+        connectMethod = getattr(self, 'connect_' + transport, None)
+        if connectMethod is not None:
+            options = self.parseAddressOptions(options)
 
-                    return self.authenticate() and self.sayHello()
+            self.logger.debug("Connecting to %r...", self.address)
+            if not connectMethod(**options):
+                self.logger.warn("Connection to %r failed!", transport)
+                self.nextConnection()
 
-                except socket.error:
-                    continue
+        else:
+            self.logger.warn("Unsupported D-Bus connection transport: %r", transport)
 
-                except:
-                    self.logger.exception("Exception encountered while attempting to connect to D-Bus!")
-                    continue
+    def connect_unix(self, **kwargs):
+        try:
+            socketAddress = kwargs['path']
+        except KeyError:
+            try:
+                # The D-Bus spec doesn't mention it, but abstract namespace UNIX domain sockets on Linux start
+                # with a null byte.
+                socketAddress = '\0' + kwargs['abstract']
+            except KeyError:
+                logger.warn("Got a 'unix' address without either 'path' or 'abstract' specified!")
+                return False
 
-            else:
-                self.logger.warn("Unsupported D-Bus connection transport: %r", transport)
+        try:
+            self.socket = socket.socket(socket.AF_UNIX)
+            self.socket.connect(socketAddress)
+            self.socket.setblocking(0)
 
-        self.logger.error("Couldn't connect to any D-Bus servers! Giving up.")
-        return False
+            #FIXME: Right now, this will probably cause issues if connect_unix ever gets called multiple times!
+            singletons.eventloop.register(self.socket, self.handleIO,
+                    events=(StreamEvents.INCOMING, StreamEvents.OUTGOING))
+
+            self.connected()
+
+            # Start authentication process.
+            self.send('\0')
+            self.authenticate()
+
+            return True
+
+        except:
+            self.logger.exception("Exception encountered while attempting to connect to D-Bus!")
+            return False
 
     def authenticate(self):
-        for AuthClass in self.authenticators:
-            if self.reportedAuthMechanisms is not None and AuthClass.name not in self.reportedAuthMechanisms:
-                # The server doesn't support this authentication method; skip it.
-                continue
+        try:
+            self.authenticator = self.authenticatorIter.next()
+        except StopIteration:
+            self.logger.warn("All supported authentication methods failed! Trying next connection...")
+            self.nextConnection()
 
-            try:
-                self.logger.debug("Attempting authentication with mechanism %s...", AuthClass.name)
-                self.authenticator = AuthClass(self)
+        if self.reportedAuthMechanisms is not None and self.authenticator.name not in self.reportedAuthMechanisms:
+            # The server doesn't support this authentication method; skip it.
+            self.authenticate()
 
-                if self.authenticator.authenticate():
-                    # Success!
-                    return True
+        try:
+            self.logger.debug("Attempting authentication with mechanism %s...", self.authenticator.name)
+            self.authenticator = self.authenticator(self)
 
-            except:
-                self.logger.exception(
-                        "Exception encountered while attempting authentication with mechanism %s!",
-                        AuthClass.name
-                        )
+            self.authenticator.authenticate()
 
-        self.logger.error("All supported authentication methods failed!")
-        raise RuntimeError("All supported authentication methods failed!")
+        except:
+            self.logger.exception(
+                    "Exception encountered while attempting authentication with mechanism %s!",
+                    self.authenticator.name
+                    )
 
-    def sayHello(self):
-        def onReturn(response):
-            self.uniqueID, = response.body
+    def authSucceeded(self):
+        self.logger.info("Authentication succeeded.")
+        self.isAuthenticated = True
+        self.authenticated()
 
-            logger.info("Got unique name %r from message bus.", self.uniqueID)
-
-        self.callMethod(
-                '/org/freedesktop/DBus', 'Hello',
-                interface='org.freedesktop.DBus',
-                destination='org.freedesktop.DBus',
-                onReturn=onReturn
-                )
-
-        return True
+    def authFailed(self):
+        self.logger.info("Authentication failed; trying next method.")
+        self.authenticate()
 
     def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, onReturn=None,
-            onError=None, onException=None):
+            onError=None):
         msg = message.Message(inSignature)
 
         h = msg.header
@@ -162,47 +274,168 @@ class Bus(object):
         msg.body = args
 
         self.send(msg.render())
-
-        data = self.recv()
-        if len(data) == 0:
-            logger.error("Server disconnected! (recv() returned %r)", data)
-            self.disconnected()
-
-        try:
-            response = message.Message.parseMessage(data)
-
-        except Exception as ex:
-            logger.exception("Got exception while parsing response for %r method call on %r! Data = %r",
-                    member, objectPath, data)
-
-            if onException is not None:
-                onException(ex)
-
-        else:
-            if response.header.messageType == message.Types.ERROR:
-                if onError is not None:
-                    onError(response)
-
-            elif response.header.messageType == message.Types.METHOD_RETURN:
-                if onReturn is not None:
-                    onReturn(response)
-
-            else:
-                logger.error("Didn't get METHOD_RETURN for %r method call on %r! Response = %r",
-                        member, objectPath, data)
-                onException(MethodCallError("Response for method call wasn't METHOD_RETURN!"))
+        self.callbacks[msg.header.serial] = Callbacks(onReturn, onError)
 
     def send(self, data):
-        self.socket.sendall(data)
+        self.outgoing.writer.write(data)
 
-    def recv(self):
-        return self.socket.recv(2048)
+    def handleIO(self, stream, evt):
+        if evt == StreamEvents.INCOMING:
+            self.handleRead()
+        elif evt == StreamEvents.OUTGOING:
+            self.handleWrite()
+        else:
+            self.logger.error("Unrecognized stream event: %r", evt)
+
+    def handleWrite(self):
+        startPos = self.outgoing.reader.tell()
+        data = self.outgoing.reader.read()
+
+        if len(data) > 0:
+            print("\033[1;90;44mhandleWrite\033[m")
+            sent = self.socket.send(data)
+            self.outgoing.reader.seek(startPos + sent)
+            self.logger.debug("Wrote %s bytes from outgoing buffer to socket.", sent)
+
+            if sent == len(data):
+                # Clear sent data so the next message is aligned correctly.
+                self.outgoing.clearReadData()
+
+    def handleRead(self):
+        print("\033[1;90;41mhandleRead\033[m")
+        """Read all incoming data from the D-Bus server, and process all resulting messages.
+
+        """
+        try:
+            data = self.socket.recv(4096)
+        except socket.error as ex:
+            if ex.errno == errno.EWOULDBLOCK:
+                # Give up reading for now; we'll get more next time we get a receive callback.
+                return
+            raise
+
+        curPos = self.incoming.reader.position
+        self.incoming.reader.seek(0, 2)
+        endPos = self.incoming.reader.position
+        self.incoming.reader.seek(curPos)
+        self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
+
+        self.incoming.writer.write(data)
+        self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.",
+                len(data), self.incoming.reader.position)
+
+        curPos = self.incoming.reader.position
+        self.incoming.reader.seek(0, 2)
+        endPos = self.incoming.reader.position
+        self.incoming.reader.seek(curPos)
+        self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
+
+        if self.isAuthenticated:
+            self.handleMessageRead()
+        else:
+            self.handleAuthRead()
+
+        # Try reading again.
+        self.handleRead()
+
+    def handleAuthRead(self):
+        try:
+            self.authenticator.handleRead(self.incoming.reader)
+
+        except NotEnoughData:
+            # Give up parsing for now; we'll get more next time we get a receive callback.
+            return
+
+        except Exception:
+            logger.exception("Got unrecognized exception while parsing incoming authentication message!")
+
+    def handleMessageRead(self):
+        if self.incoming.reader.position != 0:
+            # Clear read data so the next message is aligned correctly.
+            self.incoming.clearReadData()
+
+        startPos = self.incoming.reader.position
+        try:
+            response = message.Message.parseFile(self.incoming.reader)
+
+        except NotEnoughData:
+            # Give up parsing for now; we'll get more next time we get a receive callback.
+            self.incoming.reader.position = startPos
+            return
+
+        except Exception:
+            logger.exception("Got unrecognized exception while parsing incoming message! Skipping.")
+
+        else:
+            try:
+                inReplyTo = response.header.headerFields[message.HeaderFields.REPLY_SERIAL]
+
+            except KeyError:
+                self.handleNonResponse(response)
+
+            else:
+                self.handleResponse(response, inReplyTo)
+
+    def handleResponse(self, response, inReplyTo):
+        # A response message! Look up the method call that goes with it.
+        try:
+            callbacks = self.callbacks.pop(inReplyTo)
+        except KeyError:
+            logger.error(
+                    "Got a response message, but we don't have a record of the message it's replying to, %r!",
+                    inReplyTo
+                    )
+            return
+
+        if response.header.messageType == message.Types.ERROR:
+            callbacks.onError(response)
+
+        elif response.header.messageType == message.Types.METHOD_RETURN:
+            callbacks.onReturn(response)
+
+        else:
+            logger.error(
+                    "Got a response to message %r, but it wasn't a METHOD_RETURN or ERROR! Response = %r",
+                    inReplyTo,
+                    response
+                    )
+
+    def handleNonResponse(self, response):
+        # Not a response message; check for incoming signals and method calls.
+        if response.header.messageType == message.Types.SIGNAL:
+            warnings.warn("Not yet implemented: Got SIGNAL message: {}".format(response), FutureWarning)
+        elif response.header.messageType == message.Types.METHOD_CALL:
+            warnings.warn("Not yet implemented: Got METHOD_CALL message: {}".format(response), FutureWarning)
 
     def close(self):
         self.socket.shutdown(socket.SHUT_RDWR)
         self.socket.close()
 
-"""
+
+class Bus(Connection):
+    def __init__(self, address=None):
+        super(Bus, self).__init__(address)
+
+        self.identified = signals.Signal()
+
+        self.authenticated.connect(self.sayHello)
+
+    def sayHello(self):
+        def onReturn(response):
+            self.uniqueID, = response.body
+
+            logger.info("Got unique name %r from message bus.", self.uniqueID)
+
+            self.identified()
+
+        self.callMethod(
+                '/org/freedesktop/DBus', 'Hello',
+                interface='org.freedesktop.DBus',
+                destination='org.freedesktop.DBus',
+                onReturn=onReturn
+                )
+
+    """
     ## Proxies for org.freedesktop.DBus methods ##
     @method
     def hello(self):
@@ -445,14 +678,17 @@ class Bus(object):
         0	STRING	Unique ID identifying the bus daemon
 
         '''
-"""
+    """
 
 
 class SessionBus(Bus):
     displayNameRE = re.compile(r'^(?:(?:localhost(?:\.localdomain)?)?:)?(.*?)(?:\.\d)?$')
 
+    def __init__(self):
+        super(SessionBus, self).__init__(address=self.defaultAddress)
+
     @property
-    def address(self):
+    def defaultAddress(self):
         #FIXME: Implement getting the session bus address from the _DBUS_SESSION_BUS_ADDRESS property of the window
         # which owns the _DBUS_SESSION_BUS_SELECTION_<username>_<machine ID> X selection.
 
@@ -490,6 +726,9 @@ class SessionBus(Bus):
 
 
 class SystemBus(Bus):
+    def __init__(self):
+        super(SystemBus, self).__init__(address=self.defaultAddress)
+
     @property
-    def address(self):
+    def defaultAddress(self):
         return os.environ.get('DBUS_SYSTEM_BUS_ADDRESS', 'unix:path=/var/run/dbus/system_bus_socket')

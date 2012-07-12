@@ -1,5 +1,5 @@
 # -*- cod-ing: utf-8 -*-
-from __future__ import unicode_literals
+from __future__ import print_function, unicode_literals
 """FTTPWM: D-Bus data type system
 
 Copyright (c) 2012 David H. Bronke
@@ -7,10 +7,14 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from abc import ABCMeta, abstractmethod, abstractproperty
+from cStringIO import StringIO
+import io
+import logging
 import struct
+import warnings
 
-from StringIO import StringIO
 
+logger = logging.getLogger('fttpwm.dbus.types')
 
 NotSpecified = object()
 
@@ -27,17 +31,52 @@ class Plural(object):
         return '' if self.value == 1 else 's'
 
 
-class Marshaller(StringIO):
+class Marshaller(io.IOBase):
     # Cache of Struct objects to speed up reading and writing messages.
     #TODO: Right now, we're pretty much always writing single values one at a time, instead of combining the message
     # into one larger struct definition and writing it all at once. We'd probably be able to get better performance by
     # combining them first, but this hypothesis should probably also be tested first.
     structFormatters = dict()
 
-    def __init__(self, data=b'', byteOrder=b'='):
-        StringIO.__init__(self, data)
+    enableDebug = False
+
+    def __init__(self, data=None, byteOrder=b'='):
+        super(Marshaller, self).__init__()
+
+        if data is None:
+            self.file = StringIO()
+        elif isinstance(data, bytes):
+            self.file = StringIO(data)
+        elif isinstance(data, unicode):
+            warnings.warn("Non-bytes object being used as data for Marshaller!", BytesWarning)
+            self.file = StringIO(data)
+        else:
+            self.file = data
 
         self.byteOrder = byteOrder
+
+        # io.IOBase interface (pass-through to StringIO or underlying file)
+        self.tell = self.file.tell
+        #self.seek = self.file.seek
+        self.readable = getattr(self.file, 'readable', lambda: hasattr(self.file, 'read'))
+        self.writable = getattr(self.file, 'writable', lambda: hasattr(self.file, 'write'))
+        self.read = getattr(self.file, 'read', self.read)
+        self.write = getattr(self.file, 'write', self.write)
+
+    def read(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def write(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def seek(self, pos, mode=0):
+        self.debug('seek(0x{:X}, {!r}) from 0x{:X}', pos, mode, self.tell(), color=34)
+        return self.file.seek(pos, mode)
+
+    def debug(self, fmt, *args, **kwargs):
+        if self.enableDebug:
+            color = kwargs.pop('color', 37)
+            print('{}: \033[{}m{}\033[m'.format(self, color, fmt.format(*args)))
 
     def padSize(self, alignment):
         """Calculate the number of padding bytes required to align the next write to an (alignment)-byte boundary.
@@ -53,8 +92,7 @@ class Marshaller(StringIO):
         if padSize == 0:
             return
         self.write(b'\0' * padSize)  # Write (padSize) null bytes.
-        print('{0}: \033[90mWrote {1} byte{1.s} of padding at 0x{2:X}.\033[m'.format(
-                self, Plural(padSize), self.tell()))
+        self.debug('Wrote {1} byte{1.s} of padding at 0x{2:X}.', Plural(padSize), self.tell())
 
     def discard(self, size):
         """Skip the next (size) bytes.
@@ -62,13 +100,8 @@ class Marshaller(StringIO):
         """
         if size == 0:
             return
-        print('{0}: \033[33mDiscarding (skipping) {1} byte{1.s} at 0x{2:X}.\033[m'.format(
-                self, Plural(size), self.tell()))
+        self.debug('Discarding (skipping) {1} byte{1.s} at 0x{2:X}.', Plural(size), self.tell())
         self.seek(size, mode=1)
-
-    def seek(self, pos, mode=0):
-        print('{}: \033[34mseek(0x{:X}, {!r}) from 0x{:X}\033[m'.format(self, pos, mode, self.tell()))
-        return StringIO.seek(self, pos, mode)
 
     def skip(self, fmt):
         """Skip bytes equal to the size represented by fmt.
@@ -85,7 +118,7 @@ class Marshaller(StringIO):
         if size == 0:
             return
         self.write(b'\0' * size)  # Write (padSize) null bytes.
-        print('{0}: \033[33mWrote {1} byte{1.s} of filler at 0x{2:X}.\033[m'.format(self, Plural(size), self.tell()))
+        self.debug('Wrote {1} byte{1.s} of filler at 0x{2:X}.', Plural(size), self.tell())
 
     def getStructFormatter(self, fmt):
         fmt = self.byteOrder + fmt
@@ -111,8 +144,8 @@ class Marshaller(StringIO):
         # Write the value(s).
         packed = formatter.pack(*values)
         self.write(packed)
-        print('{0}: \033[32mWrote {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}\033[m'.format(
-                self, Plural(formatter.size), fmt, self.tell(), packed))
+        self.debug('Wrote {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}',
+                Plural(formatter.size), fmt, self.tell(), packed)
 
     def unpack(self, fmt, **kwargs):
         """Read one or more values using the given format and alignment.
@@ -129,8 +162,8 @@ class Marshaller(StringIO):
 
         # Read the value(s).
         packed = self.read(formatter.size)
-        print('{0}: \033[32mRead {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}\033[m'.format(
-                self, Plural(formatter.size), fmt, self.tell(), packed))
+        self.debug('Read {1} byte{1.s} of data ({2}) at 0x{3:X}: {4!r}',
+                Plural(formatter.size), fmt, self.tell(), packed)
         unpacked = formatter.unpack(packed)
 
         if len(unpacked) == 1:
@@ -248,7 +281,9 @@ class BasicTypeDef(TypeDef):
         marshaller.pack(self.structFmt, data)
 
     def readFrom(self, marshaller):
-        return self(marshaller.unpack(self.structFmt))
+        value = self(marshaller.unpack(self.structFmt))
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        return value
 
 
 class IntegerTypeDef(BasicTypeDef):
@@ -285,7 +320,11 @@ class BYTE(IntegerTypeDef):
         marshaller.pack(self.structFmt, self.valueType(data))
 
     def readFrom(self, marshaller):
-        return self.valueType(marshaller.unpack(self.structFmt))
+        logger.debug("Marshaller is at position %r.", marshaller.tell())
+        value = self.valueType(marshaller.unpack(self.structFmt))
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.debug("Marshaller is at position %r.", marshaller.tell())
+        return value
 
 Byte = BYTE()
 
@@ -416,9 +455,18 @@ class STRING(BasicTypeDef):
 
     def readFrom(self, marshaller):
         length = marshaller.unpack(self.structFmt)  # String length in bytes, excluding terminating null
-        data = marshaller.read(length).decode('UTF-8')
+
+        data = marshaller.read(length)
+        try:
+            data = data.decode('UTF-8')
+        except UnicodeDecodeError:
+            logger.warn("Couldn't decode string! Leaving as bytes.", exc_info=True)
+
         marshaller.discard(1)  # Discard terminating null byte.
-        return self(data)
+
+        value = self(data)
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        return value
 
 String = STRING()
 
@@ -444,6 +492,7 @@ class SIGNATURE(STRING):
     structFmt = b'B'
 
     def valueType(self, value):
+        logger.debug("%s: Parsing type signature: %r", type(self).__name__, value)
         return parseSignatures(value)
 
 Signature = SIGNATURE()
@@ -561,7 +610,9 @@ class ARRAY(ContainerTypeDef):
         endPos = marshaller.tell() + length
         items = list(self._readItems(marshaller, endPos))
 
-        return self.valueType(items)
+        value = self.valueType(items)
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        return value
 
 
 class STRUCT(EnclosedContainerTypeDef):
@@ -747,11 +798,13 @@ class STRUCT(EnclosedContainerTypeDef):
     def readFrom(self, marshaller):
         marshaller.readPad(self.alignment)  # Padding for contents
 
-        #print('{} reading subtypes {}'.format(self, self.subtypes))
-        return self(*[
+        print('{} reading subtypes {}'.format(self, self.subtypes))
+        value = self(*[
                 subtype.readFrom(marshaller)
                 for subtype in self.subtypes
                 ])
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        return value
 
 
 class VARIANT(ContainerTypeDef):
@@ -825,9 +878,19 @@ class VARIANT(ContainerTypeDef):
         data.type.writeTo(marshaller, data.value)
 
     def readFrom(self, marshaller):
-        type = self.subtypes[0].readFrom(marshaller)[0]
-        value = type.readFrom(marshaller)
-        return self._VariantInstance(type, value)
+        types = self.subtypes[0].readFrom(marshaller)
+        logger.debug("%s: Parsed type signature: %r", type(self).__name__, types)
+
+        if len(types) == 0:
+            type_ = None
+            value = None
+        else:
+            type_ = types[0]
+            value = type_.readFrom(marshaller)
+
+        value = self._VariantInstance(type_, value)
+        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        return value
 
 Variant = VARIANT()
 

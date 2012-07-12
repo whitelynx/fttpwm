@@ -16,6 +16,7 @@ from getpass import getuser
 from hashlib import sha1
 import os
 from os.path import join as joinpath, expanduser
+import weakref
 
 from ..utils import loggerFor
 
@@ -36,7 +37,8 @@ class Authenticator(object):
     def __init__(self, bus):
         self.logger = loggerFor(self)
 
-        self.bus = bus
+        self.bus = weakref.ref(bus)
+        self.handleNextResponse = lambda response: None
 
     def send(self, *data):
         if len(data) > 1:
@@ -45,38 +47,37 @@ class Authenticator(object):
             data = data[0]
 
         self.logger.debug("Sending data: %r", data)
-        self.bus.send(data)
+        self.bus().send(data)
 
     def sendData(self, *data):
         data = ' '.join(data)
 
         self.send('DATA', hexlify(data))
 
-    def recv(self):
-        response = self.bus.recv().split()
+    def handleRead(self, reader):
+        response = reader.read().split()
         self.logger.debug("Received response: %r", response)
 
         if response[0] == 'DATA':
-            return unhexlify(response[1]).split()
+            response = unhexlify(response[1]).split()
 
-        return response
+        self.handleNextResponse(response)
 
-    def checkSuccess(self):
-        response = self.recv()
+    def checkSuccess(self, response):
         if response[0] == 'OK':
-            self.bus.serverUUID = response[1]
+            self.bus().serverUUID = response[1]
             self.logger.info("Authentication succeeded; beginning session.")
             self.send('BEGIN\r\n')
-            return True
+            self.bus().authSucceeded()
 
         elif response[0] == 'REJECTED':
             self.logger.info("Authentication failed! Supported mechanisms: %s", ' '.join(response[1:]))
-            self.bus.reportedAuthMechanisms = response[1:]
-            return False
+            self.bus().reportedAuthMechanisms = response[1:]
+            self.bus().authFailed()
 
         else:
             self.logger.warn("Unexpected response to authentication: %r", response)
-            return False
+            self.bus().authFailed()
 
 
 class CookieSHA1Auth(Authenticator):
@@ -84,7 +85,10 @@ class CookieSHA1Auth(Authenticator):
 
     def authenticate(self):
         self.send('AUTH', 'DBUS_COOKIE_SHA1', hexlify(getuser()))
-        cookieContext, cookieID, serverChallenge = self.recv()
+        self.handleNextResponse = self.handleChallenge
+
+    def handleChallenge(self, response):
+        cookieContext, cookieID, serverChallenge = response
 
         cookiePath = joinpath(expanduser('~/.dbus-keyrings'), cookieContext)
         cookieFile = open(cookiePath, 'r')
@@ -103,7 +107,7 @@ class CookieSHA1Auth(Authenticator):
         responseHash = sha1('{}:{}:{}'.format(serverChallenge, clientChallenge, cookie)).hexdigest()
         self.sendData('{} {}'.format(clientChallenge, responseHash))
 
-        return self.checkSuccess()
+        self.handleNextResponse = self.checkSuccess
 
 
 class AnonymousAuth(Authenticator):
@@ -112,4 +116,4 @@ class AnonymousAuth(Authenticator):
     def authenticate(self):
         self.send('AUTH', 'ANONYMOUS')
 
-        return self.checkSuccess()
+        self.handleNextResponse = self.checkSuccess

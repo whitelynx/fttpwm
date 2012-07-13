@@ -124,3 +124,5 @@ def configure():
         logConfig["root"]["handlers"] = ["colorConsole", "file"]
 
     logging.config.dictConfig(logConfig)
+
+    logging.getLogger('logconfig').debug('Logging configured and monkeypatched.')

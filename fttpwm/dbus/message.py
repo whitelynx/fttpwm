@@ -178,14 +178,23 @@ class Message(object):
     def parseFile(cls, file):
         pos = file.tell()
         endianFlag = file.read(1)
+
+        if endianFlag == '':
+            raise NotEnoughData
+
         logger.debug("Seeking back to position %r", pos)
         file.seek(pos)
+
         logger.debug("endianFlag=%r", endianFlag)
         if endianFlag in (b'l', ord(b'l')):
             byteOrder = b'<'  # Little endian
         elif endianFlag in (b'B', ord(b'B')):
             byteOrder = b'>'  # Big endian
         else:
+            pos = file.tell()
+            logger.error("Got unrecognized endianness flag for incoming message: %r; all available data: %r",
+                    endianFlag, file.read())
+            file.seek(pos)
             raise ValueError('Unrecognized endianness flag {!r}!'.format(endianFlag))
 
         return cls.parseFromMarshaller(Marshaller(file, byteOrder))

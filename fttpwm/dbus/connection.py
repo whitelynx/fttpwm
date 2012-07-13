@@ -272,6 +272,7 @@ class Connection(object):
 
         msg.body = args
 
+        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
         self.send(msg.render())
         self.callbacks[msg.header.serial] = Callbacks(onReturn, onError)
 
@@ -291,7 +292,7 @@ class Connection(object):
         data = self.outgoing.reader.read()
 
         if len(data) > 0:
-            print("\033[1;90;44mhandleWrite\033[m")
+            print("\033[1;44;38;5;16mhandleWrite\033[m")
             sent = self.socket.send(data)
             self.outgoing.reader.seek(startPos + sent)
             self.logger.debug("Wrote %s bytes from outgoing buffer to socket.", sent)
@@ -301,63 +302,77 @@ class Connection(object):
                 self.outgoing.clearReadData()
 
     def handleRead(self):
-        print("\033[1;90;41mhandleRead\033[m")
+        print("\033[1;41;38;5;16mhandleRead\033[m")
         """Read all incoming data from the D-Bus server, and process all resulting messages.
 
         """
         try:
-            data = self.socket.recv(4096)
+            data = self.socket.recv(8192)
         except socket.error as ex:
+            logger.exception("Encountered socket error %s (%s) while receiving: %s", ex.errno, ex.strerror, ex.message)
             raise
 
-        curPos = self.incoming.reader.position
-        self.incoming.reader.seek(0, 2)
-        endPos = self.incoming.reader.position
-        self.incoming.reader.seek(curPos)
-        self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
+        #curPos = self.incoming.reader.position
+        #self.incoming.reader.seek(0, 2)
+        #endPos = self.incoming.reader.position
+        #self.incoming.reader.seek(curPos)
+        #self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
 
+        writePos = self.incoming.writer.position
         self.incoming.writer.write(data)
-        self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.",
-                len(data), self.incoming.reader.position)
+        self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.", len(data), writePos)
+        self.logger.trace("Incoming data: %r", data)
 
-        curPos = self.incoming.reader.position
-        self.incoming.reader.seek(0, 2)
-        endPos = self.incoming.reader.position
-        self.incoming.reader.seek(curPos)
-        self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
+        #curPos = self.incoming.reader.position
+        #self.incoming.reader.seek(0, 2)
+        #endPos = self.incoming.reader.position
+        #self.incoming.reader.seek(curPos)
+        #self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
 
-        if self.isAuthenticated:
-            self.handleMessageRead()
-        else:
-            self.handleAuthRead()
+        while True:
+            if self.incoming.reader.position != 0:
+                # Clear read data so the next message is aligned correctly.
+                #pos = self.incoming.reader.position
+                #self.incoming.reader.seek(0)
+                #self.logger.trace("Discarding %s bytes of read data: %r", pos, self.incoming.reader.read(pos))
+                #self.incoming.reader.seek(pos)
+
+                self.incoming.clearReadData()
+
+            startPos = self.incoming.reader.position
+            try:
+                if self.isAuthenticated:
+                    self.handleMessageRead()
+                else:
+                    self.handleAuthRead()
+
+            except NotEnoughData:
+                # Give up parsing for now; we'll get more next time we get a receive callback.
+                self.incoming.reader.position = startPos
+                return
 
     def handleAuthRead(self):
         try:
             self.authenticator.handleRead(self.incoming.reader)
 
         except NotEnoughData:
-            # Give up parsing for now; we'll get more next time we get a receive callback.
-            return
+            raise
 
         except Exception:
             logger.exception("Got unrecognized exception while parsing incoming authentication message!")
+            raise
 
     def handleMessageRead(self):
-        if self.incoming.reader.position != 0:
-            # Clear read data so the next message is aligned correctly.
-            self.incoming.clearReadData()
-
-        startPos = self.incoming.reader.position
         try:
             response = message.Message.parseFile(self.incoming.reader)
+            print("\033[1;100;38;5;16min >>> {!r}\033[m".format(response))
 
         except NotEnoughData:
-            # Give up parsing for now; we'll get more next time we get a receive callback.
-            self.incoming.reader.position = startPos
-            return
+            raise
 
         except Exception:
             logger.exception("Got unrecognized exception while parsing incoming message! Skipping.")
+            raise
 
         else:
             try:

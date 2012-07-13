@@ -20,6 +20,8 @@ import weakref
 
 from ..utils import loggerFor
 
+from .errors import NotEnoughData
+
 
 class Authenticator(object):
     __metaclass__ = ABCMeta
@@ -46,6 +48,7 @@ class Authenticator(object):
         else:
             data = data[0]
 
+        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(data.strip()))
         self.logger.debug("Sending data: %r", data)
         self.bus().send(data)
 
@@ -55,13 +58,31 @@ class Authenticator(object):
         self.send('DATA', hexlify(data))
 
     def handleRead(self, reader):
-        response = reader.read().split()
-        self.logger.debug("Received response: %r", response)
+        startPosAbs = reader.tell()
 
+        data = reader.read()
+        self.logger.debug("Read data: %r", data)
+        try:
+            endOffset = data.index('\r\n')
+        except ValueError:
+            raise NotEnoughData
+
+        reader.seek(startPosAbs + endOffset)
+        assert reader.read(2) == '\r\n'  # We're consuming the '\r\n' too.
+
+        line = data[:endOffset]
+        print("\033[1;100;38;5;16min >>> {}\033[m".format(line))
+        self.logger.debug("Received response: %r", line)
+
+        response = line.split()
         if response[0] == 'DATA':
             response = unhexlify(response[1]).split()
 
         self.handleNextResponse(response)
+
+        pos = reader.tell()
+        self.logger.debug("Upcoming data: %r", reader.read())
+        reader.seek(pos)
 
     def checkSuccess(self, response):
         if response[0] == 'OK':

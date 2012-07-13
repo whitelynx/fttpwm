@@ -206,7 +206,6 @@ class Connection(object):
         try:
             self.socket = socket.socket(socket.AF_UNIX)
             self.socket.connect(socketAddress)
-            self.socket.setblocking(0)
 
             #FIXME: Right now, this will probably cause issues if connect_unix ever gets called multiple times!
             singletons.eventloop.register(self.socket, self.handleIO,
@@ -309,9 +308,6 @@ class Connection(object):
         try:
             data = self.socket.recv(4096)
         except socket.error as ex:
-            if ex.errno == errno.EWOULDBLOCK:
-                # Give up reading for now; we'll get more next time we get a receive callback.
-                return
             raise
 
         curPos = self.incoming.reader.position
@@ -334,9 +330,6 @@ class Connection(object):
             self.handleMessageRead()
         else:
             self.handleAuthRead()
-
-        # Try reading again.
-        self.handleRead()
 
     def handleAuthRead(self):
         try:

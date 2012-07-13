@@ -168,7 +168,7 @@ class Message(object):
             self._bodyTypes = value
         else:
             self._bodyTypes = (value, )
-        print("_bodyTypes={}".format(self._bodyTypes))
+        logger.trace("_bodyTypes={}".format(self._bodyTypes))
 
     @property
     def bodySignature(self):
@@ -205,8 +205,7 @@ class Message(object):
     @classmethod
     def parseFromMarshaller(cls, marshaller):
         try:
-            logger.debug("Marshaller is at position %r.", marshaller.tell())
-            print("Reading header...")
+            logger.trace("Reading header...")
             try:
                 header = cls.headerType.readFrom(marshaller)
             except struct.error:
@@ -224,11 +223,11 @@ class Message(object):
             marshaller.seek(bodyStart)
 
             bodyTypes = header.headerFields[HeaderFields.SIGNATURE]
-            print("Reading body...")
+            logger.trace("Reading body...")
             body = [bodyType.readFrom(marshaller) for bodyType in bodyTypes]
 
         finally:
-            print('Ended reading at byte 0x{:X}'.format(marshaller.tell()))
+            logger.trace('Ended reading at byte 0x{:X}'.format(marshaller.tell()))
             marshaller.close()
 
         return Message(bodyTypes, body, header)
@@ -244,7 +243,7 @@ class Message(object):
 
         try:
             # Write the body to its own marshaller so we can determine its length.
-            print("Rendering body...")
+            logger.trace("Rendering body...")
             for idx, bodyType in enumerate(self.bodyTypes):
                 bodyType.writeTo(bodyMarshaller, self.body[idx])
 
@@ -256,16 +255,15 @@ class Message(object):
             self.header.headerFields[HeaderFields.SIGNATURE] = self.bodySignature
 
             # Write to the main marshaller.
-            print("Rendering header...")
+            logger.trace("Rendering header...")
             assert marshaller.file.tell() == 0
             self.headerType.writeTo(marshaller, self.header)
             marshaller.writePad(8)
-            print("Header ends at 0x{:X}; copying body after header...".format(marshaller.tell()))
+            logger.trace("Header ends at 0x{:X}; copying body after header...".format(marshaller.tell()))
             marshaller.write(bodyMarshaller.file.getvalue())
 
             if target is None:
-                print("Rendered message: {!r}".format(marshaller.file.getvalue()))
-                print("Re-parsed: {!r}".format(self.parseString(marshaller.file.getvalue())))
+                logger.trace("Rendered message: {!r}".format(marshaller.file.getvalue()))
                 return marshaller.file.getvalue()
 
         except IndexError:
@@ -273,6 +271,6 @@ class Message(object):
 
         finally:
             bodyMarshaller.close()
-            print('Ended writing at byte 0x{:X}'.format(marshaller.tell()))
-            print('Sent message: {!r}'.format(self))
+            logger.trace('Ended writing at byte 0x{:X}'.format(marshaller.tell()))
+            logger.debug('Rendered message: %r', self)
             marshaller.close()

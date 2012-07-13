@@ -282,7 +282,7 @@ class BasicTypeDef(TypeDef):
 
     def readFrom(self, marshaller):
         value = self(marshaller.unpack(self.structFmt))
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 
@@ -320,10 +320,8 @@ class BYTE(IntegerTypeDef):
         marshaller.pack(self.structFmt, self.valueType(data))
 
     def readFrom(self, marshaller):
-        logger.debug("Marshaller is at position %r.", marshaller.tell())
         value = self.valueType(marshaller.unpack(self.structFmt))
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
-        logger.debug("Marshaller is at position %r.", marshaller.tell())
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 Byte = BYTE()
@@ -465,7 +463,7 @@ class STRING(BasicTypeDef):
         marshaller.discard(1)  # Discard terminating null byte.
 
         value = self(data)
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 String = STRING()
@@ -492,7 +490,7 @@ class SIGNATURE(STRING):
     structFmt = b'B'
 
     def valueType(self, value):
-        logger.debug("%s: Parsing type signature: %r", type(self).__name__, value)
+        logger.trace("%s: Parsing type signature: %r", type(self).__name__, value)
         return parseSignatures(value)
 
 Signature = SIGNATURE()
@@ -611,7 +609,7 @@ class ARRAY(ContainerTypeDef):
         items = list(self._readItems(marshaller, endPos))
 
         value = self.valueType(items)
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 
@@ -798,12 +796,12 @@ class STRUCT(EnclosedContainerTypeDef):
     def readFrom(self, marshaller):
         marshaller.readPad(self.alignment)  # Padding for contents
 
-        print('{} reading subtypes {}'.format(self, self.subtypes))
+        #print('{} reading subtypes {}'.format(self, self.subtypes))
         value = self(*[
                 subtype.readFrom(marshaller)
                 for subtype in self.subtypes
                 ])
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 
@@ -879,7 +877,7 @@ class VARIANT(ContainerTypeDef):
 
     def readFrom(self, marshaller):
         types = self.subtypes[0].readFrom(marshaller)
-        logger.debug("%s: Parsed type signature: %r", type(self).__name__, types)
+        logger.trace("%s: Parsed type signature: %r", type(self).__name__, types)
 
         if len(types) == 0:
             type_ = None
@@ -889,7 +887,7 @@ class VARIANT(ContainerTypeDef):
             value = type_.readFrom(marshaller)
 
         value = self._VariantInstance(type_, value)
-        logger.debug("%s: Parsed value: %r", type(self).__name__, value)
+        logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 
 Variant = VARIANT()

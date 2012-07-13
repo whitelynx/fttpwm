@@ -312,30 +312,14 @@ class Connection(object):
             logger.exception("Encountered socket error %s (%s) while receiving: %s", ex.errno, ex.strerror, ex.message)
             raise
 
-        #curPos = self.incoming.reader.position
-        #self.incoming.reader.seek(0, 2)
-        #endPos = self.incoming.reader.position
-        #self.incoming.reader.seek(curPos)
-        #self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
-
         writePos = self.incoming.writer.position
         self.incoming.writer.write(data)
         self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.", len(data), writePos)
         self.logger.trace("Incoming data: %r", data)
 
-        #curPos = self.incoming.reader.position
-        #self.incoming.reader.seek(0, 2)
-        #endPos = self.incoming.reader.position
-        #self.incoming.reader.seek(curPos)
-        #self.logger.debug("%s bytes unread in incoming buffer.", endPos - self.incoming.reader.position)
-
         while True:
             if self.incoming.reader.position != 0:
                 # Clear read data so the next message is aligned correctly.
-                #pos = self.incoming.reader.position
-                #self.incoming.reader.seek(0)
-                #self.logger.trace("Discarding %s bytes of read data: %r", pos, self.incoming.reader.read(pos))
-                #self.incoming.reader.seek(pos)
 
                 self.incoming.clearReadData()
 

@@ -16,7 +16,7 @@ logconfig.configure()
 logger = logging.getLogger("fttpwm.dbus.__main__")
 
 
-from . import connection
+from .bus import SessionBus
 
 try:
     from ..eventloop.zmq_loop import ZMQEventLoop
@@ -38,7 +38,7 @@ bus = None
 def connect():
     global bus
     print("\033[1;42;38;5;16mconnect\033[m")
-    bus = connection.SessionBus()
+    bus = SessionBus()
     bus.identified.connect(onIdentified)
 
 

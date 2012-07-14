@@ -4,8 +4,8 @@ _A (soon-to-be) flexible, configurable, and usable tiling window manager written
 
 This WM does stuff. Not a lot yet, but it's getting... somewhere.
 
-I will warn you: I don't yet consider this finished enough for _my own_ use. I wouldn't suggest you try to use this as
-your standard window manager yet.
+I will warn you: I don't yet consider this finished enough for _my own_ use. I definitely wouldn't suggest you try to
+use this as your standard window manager yet.
 
 
 Requirements

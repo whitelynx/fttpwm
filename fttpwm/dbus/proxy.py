@@ -208,7 +208,7 @@ class Example(dbus.service.Object):
 #### Our version of the above example ####
 
 # The interface:
-class SampleInterface(DBusInterface('com.example.Sample')):
+class SampleInterface(dbus.interface.DBusInterface('com.example.Sample')):
     @dbus.interface.Method(in_signature='v', out_signature='s')
     def StringifyVariant(self, var):
         pass
@@ -223,7 +223,7 @@ class SampleInterface(DBusInterface('com.example.Sample')):
 
 
 # Or, alternate way of defining the interface: (we can't support both this and the above; not sure which I like better)
-class SampleInterface(DBusInterface('com.example.Sample')):
+class SampleInterface(dbus.interface.DBusInterface('com.example.Sample')):
     StringifyVariant = dbus.interface.Method(in_signature='v', out_signature='s')
     LastInputChanged = dbus.interface.Signal(signature='v')
     GetLastInput = dbus.interface.Method(in_signature='', out_signature='v')
@@ -252,7 +252,7 @@ class Example(dbus.local.Object):
 
 
 # Alternate way of defining the object: (pretty sure I like this better than the above, but both can be supported)
-class Example(bus.localObject):
+class Example(dbus.SessionBus().localObject):
     def __init__(self, object_path):
         super(Example, self).__init__(object_path)
         self._last_input = None

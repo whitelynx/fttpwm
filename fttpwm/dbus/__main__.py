@@ -25,7 +25,7 @@ try:
     logger.info("Using the ZeroMQ event loop.")
 
 except ImportError:
-    logger.warn("Couldn't import zmq! Falling back to polling event loop.", exc_info=True)
+    logger.warn("Couldn't import ZeroMQ event loop! Falling back to polling event loop.", exc_info=True)
 
     from .eventloop.poll_loop import PollEventLoop
 
@@ -33,8 +33,6 @@ except ImportError:
 
 
 bus = None
-
-gotResponse = False
 
 
 def connect():
@@ -47,26 +45,20 @@ def connect():
 def onIdentified():
     global gotResponse
     print("\033[1;43;38;5;16monIdentified\033[m")
-    gotResponse = False
-    eventloop.callEvery(0.5, sendGetCapabilities)
+    sendGetCapabilities()
 
 
 def sendGetCapabilities():
-    global gotResponse
-    if not gotResponse:
-        print("\033[1;46;38;5;16mGetCapabilities\033[m")
-        bus.callMethod(
-                '/org/freedesktop/Notifications', 'GetCapabilities',
-                interface='org.freedesktop.Notifications',
-                destination='org.freedesktop.Notifications',
-                onReturn=onGetCapabilitiesReturn
-                )
-        return True
+    print("\033[1;46;38;5;16mGetCapabilities\033[m")
+    bus.callMethod(
+            '/org/freedesktop/Notifications', 'GetCapabilities',
+            interface='org.freedesktop.Notifications',
+            destination='org.freedesktop.Notifications',
+            onReturn=onGetCapabilitiesReturn
+            )
 
 
 def onGetCapabilitiesReturn(response):
-    global gotResponse
-    gotResponse = True
     logger.info("Got capabilities from notification daemon: %r.", response.body)
 
     print("\033[1;45;38;5;16mNotify\033[m")

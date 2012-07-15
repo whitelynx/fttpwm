@@ -47,6 +47,7 @@ FTTPWM is released under the [MIT License][]. See the `LICENSE` file for details
 Acknowledgements
 ----------------
 FTTPWM's code was constructed with help from a variety of sources:
+
 - Parts of [xpybutil][] (which is also a dependency) are overridden in order to correct certain behavior quirks. These
   changes really need to get merged back into the xpybutil codebase at some point.
 - Code from several projects was used as a point of reference for FTTPWM, but I don't believe any code from them was

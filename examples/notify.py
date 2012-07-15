@@ -34,6 +34,10 @@ except ImportError:
 
 bus = None
 
+notificationID = 0  # Initially, don't specify an ID
+notificationCount = 1
+maxNotificationCount = 20
+
 
 def connect():
     global bus
@@ -60,23 +64,26 @@ def sendGetCapabilities():
 
 def onGetCapabilitiesReturn(response):
     logger.info("Got capabilities from notification daemon: %r.", response.body)
+    sendNotification()
 
+
+def sendNotification():
     print("\033[1;45;38;5;16mNotify\033[m")
     title = "A notification!"
-    msg = "Text and stuff."
+    msg = "This is message number {}.".format(notificationCount)
     logger.info("Sending notification message with title %r: %r.", title, msg)
     bus.callMethod(
             '/org/freedesktop/Notifications', 'Notify',
             'susssasa{ss}i',
             [
-                "fttpwm",  # app_name
-                0,         # notification_id (spec calls this "replaces_id")
-                "",        # app_icon
-                title,     # summary
-                msg,       # body
-                [],        # actions
-                {},        # hints
-                -1,        # expire_timeout
+                "fttpwm",        # app_name
+                notificationID,  # notification_id (spec calls this "replaces_id")
+                "",              # app_icon
+                title,           # summary
+                msg,             # body
+                [],              # actions
+                {},              # hints
+                -1,              # expire_timeout
                 ],
             interface='org.freedesktop.Notifications',
             destination='org.freedesktop.Notifications',
@@ -85,7 +92,18 @@ def onGetCapabilitiesReturn(response):
 
 
 def onNotifyReturn(response):
-    logger.info("Got response %r from notification daemon, with body %r.", response, response.body)
+    global notificationID, notificationCount
+    if notificationID == 0:
+        notificationID = response.body[0]
+        logger.info("Got notification ID %r from notification daemon.", notificationID)
+
+    if notificationCount < maxNotificationCount:
+        notificationCount += 1
+
+        sendNotification()
+
+    else:
+        eventloop.exit()
 
 
 eventloop.callWhenIdle(connect)

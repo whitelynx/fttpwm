@@ -82,5 +82,5 @@ FTTPWM's code was constructed with help from a variety of sources:
 [Extended Window Manager Hints]: http://freedesktop.org/wiki/Specifications/wm-spec
 [Desktop Entry Specification]: http://standards.freedesktop.org/desktop-entry-spec/desktop-entry-spec-1.0.html
 [Desktop Application Autostart Specification]: http://freedesktop.org/wiki/Specifications/autostart-spec
-[The D-Bus Specification]: http://dbus.freedesktop.org/doc/dbus-specification.html
-[The Desktop Notifications Specification]: http://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html
+[D-Bus]: http://dbus.freedesktop.org/doc/dbus-specification.html
+[Desktop Notifications]: http://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html

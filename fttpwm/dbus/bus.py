@@ -13,7 +13,7 @@ import os
 from os.path import exists, expanduser
 import re
 
-from .. import signals
+from .. import signals, singletons
 from ..utils import loggerFor
 
 from .connection import Connection
@@ -295,6 +295,7 @@ class SessionBus(Bus):
 
     def __init__(self):
         super(SessionBus, self).__init__(address=self.defaultAddress)
+        singletons.dbusSessionBus = self
 
     @property
     def defaultAddress(self):
@@ -337,6 +338,7 @@ class SessionBus(Bus):
 class SystemBus(Bus):
     def __init__(self):
         super(SystemBus, self).__init__(address=self.defaultAddress)
+        singletons.dbusSystemBus = self
 
     @property
     def defaultAddress(self):

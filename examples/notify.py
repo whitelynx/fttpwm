@@ -13,10 +13,11 @@ from fttpwm import logconfig
 
 logconfig.configure()
 
-logger = logging.getLogger("fttpwm.dbus.__main__")
+logger = logging.getLogger("fttpwm.examples.notify")
 
 
 from fttpwm.dbus.bus import SessionBus
+from fttpwm.notify.client import Notification
 
 try:
     from fttpwm.eventloop.zmq_loop import ZMQEventLoop
@@ -34,7 +35,7 @@ except ImportError:
 
 bus = None
 
-notificationID = 0  # Initially, don't specify an ID
+notification = None
 notificationCount = 1
 maxNotificationCount = 20
 
@@ -63,40 +64,25 @@ def sendGetCapabilities():
 
 
 def onGetCapabilitiesReturn(response):
+    global notification
     logger.info("Got capabilities from notification daemon: %r.", response.body)
+    notification = Notification('fttpwm', '', '')
     sendNotification()
 
 
 def sendNotification():
+    global notification
     print("\033[1;45;38;5;16mNotify\033[m")
-    title = "A notification!"
-    msg = "This is message number {}.".format(notificationCount)
-    logger.info("Sending notification message with title %r: %r.", title, msg)
-    bus.callMethod(
-            '/org/freedesktop/Notifications', 'Notify',
-            'susssasa{ss}i',
-            [
-                "fttpwm",        # app_name
-                notificationID,  # notification_id (spec calls this "replaces_id")
-                "",              # app_icon
-                title,           # summary
-                msg,             # body
-                [],              # actions
-                {},              # hints
-                -1,              # expire_timeout
-                ],
-            interface='org.freedesktop.Notifications',
-            destination='org.freedesktop.Notifications',
-            onReturn=onNotifyReturn
-            )
+
+    notification.summary = "A notification!"
+    notification.body = "This is message number {}.".format(notificationCount)
+    logger.info("Showing notification message with title %r: %r.", notification.summary, notification.body)
+
+    notification.show(onReturn=onNotifyReturn)
 
 
 def onNotifyReturn(response):
-    global notificationID, notificationCount
-    if notificationID == 0:
-        notificationID = response.body[0]
-        logger.info("Got notification ID %r from notification daemon.", notificationID)
-
+    global notificationCount
     if notificationCount < maxNotificationCount:
         notificationCount += 1
 

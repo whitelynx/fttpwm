@@ -10,6 +10,7 @@ but for now it limits what you can connect to.
 
 """
 from cStringIO import StringIO
+import collections
 import io
 import socket
 import urllib
@@ -123,6 +124,7 @@ class Connection(object):
         self.uniqueID = None
         self.callbacks = dict()
         self.isAuthenticated = False
+        self.signalHandlers = collections.defaultdict(list)
 
         self.incoming = RWBuffer()
         self.outgoing = RWBuffer()
@@ -255,19 +257,25 @@ class Connection(object):
         h = msg.header
         h.messageType = message.Types.METHOD_CALL
 
-        h.headerFields[message.HeaderFields.PATH] = types.Variant(types.ObjectPath, objectPath)
-        h.headerFields[message.HeaderFields.MEMBER] = types.Variant(types.String, member)
+        h.headerFields[message.HeaderFields.PATH] = types.Variant(objectPath, types.ObjectPath)
+        h.headerFields[message.HeaderFields.MEMBER] = types.Variant(member, types.String)
 
         if interface is not None:
-            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(types.String, interface)
+            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
         if destination is not None:
-            h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(types.String, destination)
+            h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(destination, types.String)
 
         msg.body = args
 
         print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
         self.send(msg.render())
         self.callbacks[msg.header.serial] = Callbacks(onReturn, onError)
+
+    def listenForSignal(self, interface, handler, **kwargs):
+        if len(kwargs) > 0:
+            raise NotImplemented
+
+        self.signalHandlers[interface].append(handler)
 
     def send(self, data):
         self.outgoing.writer.write(data)
@@ -295,7 +303,6 @@ class Connection(object):
                 self.outgoing.clearReadData()
 
     def handleRead(self):
-        print("\033[1;41;38;5;16mhandleRead\033[m")
         """Read all incoming data from the D-Bus server, and process all resulting messages.
 
         """
@@ -306,6 +313,11 @@ class Connection(object):
                     ex.errno, ex.strerror, ex.message)
             raise
 
+        if len(data) == 0:
+            #raise IOError("Remote host disconnected!")
+            return
+
+        print("\033[1;41;38;5;16mhandleRead\033[m")
         writePos = self.incoming.writer.position
         self.incoming.writer.write(data)
         self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.", len(data), writePos)
@@ -386,12 +398,17 @@ class Connection(object):
                     response
                     )
 
-    def handleNonResponse(self, response):
+    def handleNonResponse(self, incoming):
         # Not a response message; check for incoming signals and method calls.
-        if response.header.messageType == message.Types.SIGNAL:
-            warnings.warn("Not yet implemented: Got SIGNAL message: {}".format(response), FutureWarning)
-        elif response.header.messageType == message.Types.METHOD_CALL:
-            warnings.warn("Not yet implemented: Got METHOD_CALL message: {}".format(response), FutureWarning)
+        if incoming.header.messageType == message.Types.SIGNAL:
+            self.handleSignal(incoming)
+        elif incoming.header.messageType == message.Types.METHOD_CALL:
+            warnings.warn("Not yet implemented: Got METHOD_CALL message: {}".format(incoming), FutureWarning)
+
+    def handleSignal(self, incoming):
+        interfaceName = incoming.header.headerFields[message.HeaderFields.INTERFACE]
+        for handler in self.signalHandlers[interfaceName] + self.signalHandlers[None]:
+            handler(incoming)
 
     def close(self):
         self.socket.shutdown(socket.SHUT_RDWR)

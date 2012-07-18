@@ -1,4 +1,4 @@
-# -*- codin-g: utf-8 -*-
+# -*- coding: utf-8 -*-
 """FTTPWM: Main application
 
 Copyright (c) 2012 David H. Bronke

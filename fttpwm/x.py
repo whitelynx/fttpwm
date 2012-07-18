@@ -1,4 +1,4 @@
-# -*- codin-g: utf-8 -*-
+# -*- coding: utf-8 -*-
 """FTTPWM: X connection utilities
 
 Copyright (c) 2012 David H. Bronke

@@ -1,4 +1,4 @@
-# -*- cod-ing: utf-8 -*-
+# -*- coding: utf-8 -*-
 """FTTPWM: Wallpaper (root pixmap) setter
 
 Copyright (c) 2012 David H. Bronke

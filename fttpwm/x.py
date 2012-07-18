@@ -6,34 +6,21 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from collections import deque
-import datetime
 import logging
-import os
-import select
-import sys
 
 import xcb
-from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, Mapping, PropMode, SetMode, StackMode
+from xcb.xproto import Atom, Mapping, PropMode
 from xcb.xproto import WindowClass
 from xcb.xproto import CirculateRequestEvent, ConfigureRequestEvent, MapRequestEvent
-from xcb.xproto import ConfigureNotifyEvent, MappingNotifyEvent
+from xcb.xproto import MappingNotifyEvent
 
 import xpybutil
 import xpybutil.event
-import xpybutil.ewmh as ewmh
-from xpybutil.util import get_atom as atom
 import xpybutil.window
 
-from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
-from .setroot import setWallpaper
-from .utils import convertAttributes, findCurrentVisual
-from .xevents import SelectionNotifyEvent
-from .frame import WindowFrame
+from .utils import findCurrentVisual
 from .signals import Signal
-from .signaled import SignaledDict
-from .statusbar import StatusBar
-from .workspace import WorkspaceManager
 from . import singletons
 
 

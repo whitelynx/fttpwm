@@ -22,8 +22,8 @@ from ..eventloop.base import StreamEvents
 
 from .auth import CookieSHA1Auth, AnonymousAuth
 #from .proxy import signal, method
-from . import message, types
-from .errors import NotEnoughData
+from .proto import message, types
+from .proto.errors import NotEnoughData
 
 
 class RWBuffer(object):

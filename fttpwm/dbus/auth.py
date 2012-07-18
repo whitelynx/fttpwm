@@ -20,7 +20,7 @@ import weakref
 
 from ..utils import loggerFor
 
-from .errors import NotEnoughData
+from .proto.errors import NotEnoughData
 
 
 class Authenticator(object):

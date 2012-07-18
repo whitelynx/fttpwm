@@ -172,7 +172,7 @@ class Message(object):
 
     @property
     def bodySignature(self):
-        return Variant(Signature, ''.join(bt.toSignature() for bt in self.bodyTypes))
+        return Variant(''.join(bt.toSignature() for bt in self.bodyTypes), Signature)
 
     @classmethod
     def parseFile(cls, file):
@@ -278,8 +278,10 @@ class Message(object):
         except IndexError:
             raise RuntimeError("Message can't be rendered unless a full body is set!")
 
+        else:
+            logger.debug('Rendered message: %r', self)
+
         finally:
             bodyMarshaller.close()
             logger.trace('Ended writing at byte 0x{:X}'.format(marshaller.tell()))
-            logger.debug('Rendered message: %r', self)
             marshaller.close()

@@ -221,7 +221,15 @@ class TypeDef(object):
 
     typeCode = abstractproperty()
     structFmt = abstractproperty()
-    valueType = abstractproperty()
+
+    @property
+    def valueType(self):
+        try:
+            return self._instanceClass
+
+        except AttributeError:
+            self._instanceClass = self.makeValueType()
+            return self._instanceClass
 
     @abstractmethod
     def __init__(self):
@@ -230,7 +238,10 @@ class TypeDef(object):
         self.defaultValue = NotSpecified
 
     def __call__(self, value=NotSpecified):
-        if value is NotSpecified:
+        if isinstance(value, self.valueType):
+            return value
+
+        elif value is NotSpecified:
             if self.defaultValue is NotSpecified:
                 return self.valueType()
 
@@ -249,9 +260,16 @@ class TypeDef(object):
     def __unicode__(self):
         return self.__class__.__name__
 
+    @abstractmethod
+    def makeValueType(self):
+        pass
+
     @classmethod
     def fromSignature(cls, parser):
-        return cls()
+        try:
+            return cls._instance
+        except AttributeError:
+            return cls()
 
     def toSignature(self):
         return self.typeCode
@@ -275,6 +293,7 @@ class TypeDef(object):
 
 class BasicTypeDef(TypeDef):
     def __init__(self):
+        type(self)._instance = self
         super(BasicTypeDef, self).__init__()
 
     def writeTo(self, marshaller, data):
@@ -287,7 +306,11 @@ class BasicTypeDef(TypeDef):
 
 
 class IntegerTypeDef(BasicTypeDef):
-    valueType = int
+    def makeValueType(self):
+        class _IntegerTypeInstance(int):
+            _dbusType = self
+
+        return _IntegerTypeInstance
 
 
 class BYTE(IntegerTypeDef):
@@ -299,22 +322,25 @@ class BYTE(IntegerTypeDef):
     typeCode = b'y'
     structFmt = b'B'
 
-    class _ByteInstance(int):
-        def __new__(cls, value=NotSpecified, base=NotSpecified):
-            try:
+    def makeValueType(self):
+        class _ByteInstance(int):
+            _dbusType = self
+
+            def __new__(cls, value=NotSpecified, base=NotSpecified):
                 if value is NotSpecified:
                     return int.__new__(cls)
 
                 elif base is NotSpecified:
-                    return int.__new__(cls, value)
+                    try:
+                        return int.__new__(cls, value)
+
+                    except ValueError:
+                        return int.__new__(cls, ord(value))
 
                 else:
                     return int.__new__(cls, value, base)
 
-            except ValueError:
-                return int.__new__(cls, ord(value))
-
-    valueType = _ByteInstance
+        return _ByteInstance
 
     def writeTo(self, marshaller, data):
         marshaller.pack(self.structFmt, self.valueType(data))
@@ -335,7 +361,12 @@ class BOOLEAN(BasicTypeDef):
     """
     typeCode = b'b'
     structFmt = b'xxx?'  # BOOLEAN in the spec is 32-bit, but Python's struct module only uses 8 bits; add padding.
-    valueType = bool
+
+    def makeValueType(self):
+        class _BooleanTypeInstance(bool):
+            _dbusType = self
+
+        return _BooleanTypeInstance
 
 Boolean = BOOLEAN()
 
@@ -420,7 +451,12 @@ class DOUBLE(BasicTypeDef):
     """
     typeCode = b'd'
     structFmt = b'd'
-    valueType = float
+
+    def makeValueType(self):
+        class _DoubleTypeInstance(float):
+            _dbusType = self
+
+        return _DoubleTypeInstance
 
 Double = DOUBLE()
 
@@ -444,7 +480,12 @@ class STRING(BasicTypeDef):
     """
     typeCode = b's'
     structFmt = b'I'
-    valueType = unicode
+
+    def makeValueType(self):
+        class _StringTypeInstance(unicode):
+            _dbusType = self
+
+        return _StringTypeInstance
 
     def writeTo(self, marshaller, data):
         marshaller.pack(self.structFmt, len(data))  # String length in bytes, excluding terminating null
@@ -489,14 +530,36 @@ class SIGNATURE(STRING):
     typeCode = b'g'
     structFmt = b'B'
 
-    def valueType(self, value):
-        logger.trace("%s: Parsing type signature: %r", type(self).__name__, value)
-        return parseSignatures(value)
+    def makeValueType(self):
+        class _SignatureTypeInstance(object):
+            _dbusType = self
+
+            def __init__(self_, value):
+                super(_SignatureTypeInstance, self_).__init__()
+
+                logger.trace("%s: Parsing type signature: %r", type(self_).__name__, value)
+                self_.types = parseSignatures(value)
+
+            def __unicode__(self_):
+                if len(self_.types) == 1:
+                    return unicode(self_.types[0])
+                else:
+                    return unicode(self_.types)
+
+            def __getitem__(self_, index):
+                return self_.types[index]
+
+            def __len__(self_):
+                return len(self_.types)
+
+        return _SignatureTypeInstance
 
 Signature = SIGNATURE()
 
 
 class ContainerTypeDef(TypeDef):
+    _instances = {}
+
     def __init__(self, *subtypes):
         for subtype in subtypes:
             if not isinstance(subtype, TypeDef):
@@ -505,6 +568,7 @@ class ContainerTypeDef(TypeDef):
                     type(subtype).__name__)
                     )
 
+        type(self)._instances[subtypes] = self
         super(ContainerTypeDef, self).__init__()
 
         self.subtypes = subtypes
@@ -522,7 +586,10 @@ class EnclosedContainerTypeDef(ContainerTypeDef):
 
         assert parser.consume() == cls.endTypeCode
 
-        return cls(*subtypes)
+        try:
+            return cls._instances[tuple(subtypes)]
+        except KeyError:
+            return cls(*subtypes)
 
     def toSignature(self):
         return '{}{}{}'.format(
@@ -556,20 +623,45 @@ class ARRAY(ContainerTypeDef):
     def subtype(self):
         return self.subtypes[0]
 
-    @property
-    def valueType(self):
+    def makeValueType(self):
         if isinstance(self.subtype, DICT_ENTRY):
-            if isinstance(self.subtype.subtypes[1], VARIANT):
-                return VARIANT._VariantDict
+            dictKeyType, dictValueType = self.subtype.subtypes
+
+            if isinstance(dictValueType, VARIANT):
+                class _VariantDictTypeInstance(dict):
+                    _dbusType = self
+
+                    def __getitem__(self_, key):
+                        return super(_VariantDictTypeInstance, self_).__getitem__(key).value
+
+                    def __setitem__(self_, key, value):
+                        if not isinstance(value, dictValueType.valueType):
+                            value = dictValueType(value)
+
+                        super(_VariantDictTypeInstance, self_).__setitem__(key, value)
+
+                return _VariantDictTypeInstance
+
             else:
-                return dict
+                class _DictTypeInstance(dict):
+                    _dbusType = self
+
+                return _DictTypeInstance
+
         else:
-            return list
+            class _ListTypeInstance(list):
+                _dbusType = self
+
+            return _ListTypeInstance
 
     @classmethod
     def fromSignature(cls, parser):
         subtype = parser.buildNext()
-        return cls(subtype)
+
+        try:
+            return cls._instances[(subtype, )]
+        except KeyError:
+            return cls(subtype)
 
     def toSignature(self):
         return '{}{}'.format(self.typeCode, self.subtype.toSignature())
@@ -611,6 +703,10 @@ class ARRAY(ContainerTypeDef):
         value = self.valueType(items)
         logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
+
+
+def DICT(keyType, valType):
+    return ARRAY(DICT_ENTRY(keyType, valType))
 
 
 class STRUCT(EnclosedContainerTypeDef):
@@ -720,17 +816,11 @@ class STRUCT(EnclosedContainerTypeDef):
 
         return _NamedValueStructInstance
 
-    @property
-    def valueType(self):
-        try:
-            return self._instanceClass
-
-        except AttributeError:
-            if self.memberNames is not None:
-                self._instanceClass = self.makeNamedValueStructInstance()
-            else:
-                self._instanceClass = self.makeOrderedStructInstance()
-            return self._instanceClass
+    def makeValueType(self):
+        if self.memberNames is not None:
+            return self.makeNamedValueStructInstance()
+        else:
+            return self.makeOrderedStructInstance()
 
     def __call__(self, *values, **namedValues):
         namedValueCount = len(namedValues)
@@ -815,60 +905,73 @@ class VARIANT(ContainerTypeDef):
     structFmt = b'B'  # We don't actually use this, so we just copy the one from SIGNATURE since it's our first member.
 
     def __init__(self):
+        if 'Variant' in globals():
+            raise RuntimeError
+        type(self)._instance = self
         super(VARIANT, self).__init__(Signature)
 
-    class _VariantInstance(object):
-        __slots__ = ['type', 'value']
+    def makeValueType(self):
+        class _VariantInstance(object):
+            __slots__ = ['value', 'type']
+            _dbusType = self
 
-        def __init__(self, type=NotSpecified, value=NotSpecified):
-            self.type = type
-            self.value = value
+            def __init__(self_, value=NotSpecified, type_=NotSpecified):
+                if not isinstance(type_, TypeDef) and type_ is not NotSpecified:
+                    raise TypeError
+                if isinstance(value, _VariantInstance):
+                    raise ValueError
 
-        def __repr__(self):
-            return '{!s}({!r})'.format(self.type, self.value)
+                self_.value = value
+                if value is NotSpecified:
+                    self_.value = self.defaultValue
 
-    valueType = _VariantInstance
+                self_.type = type_
+                if type_ is NotSpecified:
+                    self_.type = VARIANT._guessType(value)
 
-    class _VariantDict(dict):
-        def __getitem__(self, key):
-            return super(VARIANT._VariantDict, self).__getitem__(key).value
+            def __repr__(self_):
+                return '{!s}({!r})'.format(self_.type, self_.value)
 
-        def __setitem__(self, key, value):
-            if not isinstance(value, VARIANT._VariantInstance):
-                type = VARIANT._guessType(value)
-                value = VARIANT._VariantInstance(type, value)
+        return _VariantInstance
 
-            super(VARIANT._VariantDict, self).__setitem__(key, value)
+    def __call__(self, value=NotSpecified, type_=NotSpecified):
+        if isinstance(value, self.valueType):
+            return value
 
-    def __call__(self, type=NotSpecified, value=NotSpecified):
-        if type is NotSpecified:
-            if self.defaultValue is NotSpecified:
-                return self.valueType()
-
-            else:
-                return self.defaultValue
-
-        elif value is NotSpecified:
-            if self.defaultValue is NotSpecified or self.defaultValue.type != type:
-                return self.valueType(type)
-
-            else:
-                return self.defaultValue
-
-        else:
-            return self.valueType(type, value)
+        return self.valueType(value, type_)
 
     @classmethod
     def _guessType(self, value):
-        #if isinstance(value, bytes):
-        #    warnings.warn('Guessing type Signature for a bytes value! Use Variant.valueType() here.',
-        #            UnicodeWarning, stacklevel=2)
-        #    return Signature
-        #elif isinstance(value, unicode):
-        #    warnings.warn('Guessing type String for a unicode value! Use Variant.valueType() here.',
-        #            UnicodeWarning, stacklevel=2)
-        #    return String
-        #else:
+        if isinstance(value, unicode):
+            return String
+        elif isinstance(value, bytes):
+            warnings.warn('Guessing type String for a bytes value! Use unicode here.', UnicodeWarning, stacklevel=2)
+            return String
+
+        elif isinstance(value, int):
+            if value < 0:
+                if value > -2 ** 31:
+                    warnings.warn('Guessing type Int32 for an int value! Use one of the Int* types here.',
+                            UnicodeWarning, stacklevel=2)
+                    return Int32
+
+                warnings.warn('Guessing type Int64 for an int value! Use one of the Int* types here.',
+                        UnicodeWarning, stacklevel=2)
+                return Int64
+
+            else:
+                if value < 2 ** 32:
+                    # We'll assume this is fine; this seems to be the most commonly-used int type in the D-Bus spec.
+                    return UInt32
+
+                warnings.warn('Guessing type UInt64 for an int value! Use one of the UInt* types here.',
+                        UnicodeWarning, stacklevel=2)
+                return UInt64
+
+        elif hasattr(value, '_dbusType'):
+            return value._dbusType
+
+        else:
             raise ValueError("Couldn't guess D-Bus type based on Python value {!r}!".format(value))
 
     def writeTo(self, marshaller, data):
@@ -886,7 +989,7 @@ class VARIANT(ContainerTypeDef):
             type_ = types[0]
             value = type_.readFrom(marshaller)
 
-        value = self._VariantInstance(type_, value)
+        value = self.valueType(value, type_)
         logger.trace("%s: Parsed value: %r", type(self).__name__, value)
         return value
 

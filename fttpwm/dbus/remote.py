@@ -35,3 +35,4 @@ class RemoteObject(object):
         example.StringifyVariant[SampleInterface]("Some value!")
 
     """
+    #FIXME: Implement!

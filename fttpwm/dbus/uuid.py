@@ -11,7 +11,7 @@ import time
 #   The UUID must contain 128 bits of data and be hex-encoded. The hex-encoded string may not contain hyphens or other
 #   non-hex-digit characters, and it must be exactly 32 characters long. To generate a UUID, the current reference
 #   implementation concatenates 96 bits of random data followed by the 32-bit time in seconds since the UNIX epoch (in
-#   big endian byte order)."
+#   big endian byte order).
 def generateUUID():
     """Generate a D-Bus-compatible UUID.
 

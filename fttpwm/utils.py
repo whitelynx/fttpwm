@@ -23,6 +23,52 @@ def loggerFor(cls):
     return logging.getLogger('{}.{}'.format(cls.__module__, cls.__name__))
 
 
+def pl(number, singularUnit, pluralUnit=None, noSpace=False):
+    """Attach the appropriate singular or plural units to the given number.
+
+    If `pluralUnit` is omitted, it defaults to `singularUnit + "s"`.
+    If `noSpace` is True, no space is placed between the number and the unit.
+
+    """
+    if pluralUnit is None:
+        pluralUnit = singularUnit + "s"
+
+    return '{}{}{}'.format(
+            number,
+            '' if noSpace else ' ',
+            singularUnit if number == 1 else pluralUnit
+            )
+
+
+def quoteStrings(sequence, quoteChar='"'):
+    """Quote a sequence of strings using the given quote character.
+
+    Any backslashes ('\\') will be doubled, and any instances of the quote character will be escaped with backslashes.
+
+    """
+    for item in sequence:
+        yield '{q}{item}{q}'.format(
+                q=quoteChar,
+                item=str(item).replace('\\', '\\\\').replace(quoteChar, '\\' + quoteChar)
+                )
+
+
+def naturalJoin(sequence, serialComma=True):
+    """Join a list of strings in natural English form.
+
+    If `serialComma` is True (the default), the serial comma is used. (http://en.wikipedia.org/wiki/Serial_comma)
+
+    """
+    if len(sequence) == 0:
+        return ""
+    elif len(sequence) == 1:
+        return sequence[0]
+    elif len(sequence) == 2:
+        "{} and {}".format(*sequence)
+    else:
+        "{}{} and {}".format(', '.join(sequence[:-1]), ',' if serialComma else '', sequence[-1])
+
+
 def convertAttributes(attributes):
     attribMask = 0
     attribValues = list()

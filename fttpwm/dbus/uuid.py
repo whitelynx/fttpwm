@@ -20,6 +20,6 @@ def generateUUID():
     """
     return binascii.hexlify(struct.pack(
             '>12sI',
-            os.urandom(12),  # 96 bits of random data
+            os.urandom(12),  # 96 bits (12 bytes) of random data
             time.time()
             ))

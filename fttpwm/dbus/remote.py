@@ -33,6 +33,7 @@ class RemoteObject(object):
     assign your own functions to its `onReturn` and `onError` properties in order to handle return values and errors.
     They are not `fttpwm.signals.Signal` instances yet, because of the desire to avoid race conditions by allowing
     callbacks to be called immediately if they are assigned after the return or error event has already occurred.
+    (FIXME: It'd be nice if they at least used the same interface as `Signal`)
 
     Signals on remote objects are represented by `fttpwm.signals.Signal` instances.
 

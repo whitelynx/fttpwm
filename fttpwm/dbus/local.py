@@ -10,7 +10,7 @@ from collections import defaultdict
 import logging
 from weakref import WeakSet, WeakKeyDictionary, WeakValueDictionary
 
-from .interface import _InterfaceMethodInfo
+from .interface import _LocalInterfaceMethodInfo
 from ..utils import naturalJoin
 
 
@@ -19,8 +19,9 @@ logger = logging.getLogger('fttpwm.dbus.local')
 
 class _MemberWrapper(WeakKeyDictionary):
     def __init__(self, memberName, members, **overrides):
-        super(_MemberWrapper, self).__init__(
-                (m.interface(), m) for m in members
+        WeakKeyDictionary.__init__(
+                self,
+                ((m.interface(), m) for m in members)
                 )
         self.update(overrides)
 
@@ -49,7 +50,7 @@ class _LocalObjectMeta(type):
         membersByInterface = defaultdict(set)
         membersByDBusName = defaultdict(set)
         for member in dict_.values():
-            if isinstance(member, _InterfaceMethodInfo):
+            if isinstance(member, _LocalInterfaceMethodInfo):
                 ifaceMethod = member.interfaceMethod
 
                 membersByInterface[ifaceMethod.interface()].add(ifaceMethod)

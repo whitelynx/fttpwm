@@ -10,6 +10,7 @@ from ..signals import Signal
 from ..utils import loggerFor
 
 
+#TODO: Replace _call_Notifications with actual remote proxy objects!
 def _call_Notifications(bus, methodName, *args, **kwargs):
     bus.callMethod(
             '/org/freedesktop/Notifications',
@@ -34,11 +35,11 @@ class Server(object):
         self.infoRetrieved = Signal()
 
     def getCapabilities(self):
-        _call_Notifications(
+        cb = _call_Notifications(
                 self.bus,
-                'GetCapabilities',
-                onReturn=self._onGetCapabilitiesReturn
+                'GetCapabilities'
                 )
+        cb.onReturn = self._onGetCapabilitiesReturn
 
     def _onGetCapabilitiesReturn(self, response):
         self.logger.info("Got capabilities from notification daemon: %r.", response.body)
@@ -46,11 +47,11 @@ class Server(object):
         self.capabilities = response.body[0]
 
     def getServerInformation(self):
-        _call_Notifications(
+        cb = _call_Notifications(
                 self.bus,
-                'GetServerInformation',
-                onReturn=self._onServerInformationReturn
+                'GetServerInformation'
                 )
+        cb.onReturn = self._onServerInformationReturn
 
     def _onServerInformationReturn(self, response):
         self.logger.info("Got capabilities from notification daemon: %r.", response.body)
@@ -120,7 +121,7 @@ class Notification(object):
             self.onNotifyReturn(response)
             onReturn(response)
 
-        _call_Notifications(
+        cb = _call_Notifications(
                 self.bus,
                 'Notify',
                 'susssasa{ss}i',
@@ -133,9 +134,9 @@ class Notification(object):
                     self.actions,
                     self.hints,
                     self.expirationMS,
-                    ],
-                onReturn=handleReturn
+                    ]
                 )
+        cb.onReturn = handleReturn
 
     def onNotifyReturn(self, response):
         global notificationID, notificationCount
@@ -152,15 +153,15 @@ class Notification(object):
     def close(self):
         self.logger.info("Closing notification message %r.", self.notificationID)
 
-        _call_Notifications(
+        cb = _call_Notifications(
                 self.bus,
                 'CloseNotification',
                 'u',
                 [
                     self.notificationID,
-                    ],
-                onReturn=self.onReturn
+                    ]
                 )
+        cb.onReturn = self.onReturn
 
     def onNotificationClosed(self, reason):
         '''A completed notification is one that has timed out, or has been dismissed by the user. [sic]

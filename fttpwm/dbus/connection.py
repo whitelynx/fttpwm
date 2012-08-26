@@ -105,9 +105,54 @@ class RWBuffer(object):
 
 
 class Callbacks(object):
-    def __init__(self, onReturn=None, onError=None):
-        self.onReturn = onReturn or (lambda response: None)
-        self.onError = onError or (lambda response: None)
+    """Keeps track of the callbacks for a given event.
+
+    If callbacks are assigned after the event has already occurred, they will be called immediately.
+
+    """
+    def __init__(self):
+        self.isError = None
+        self.response = None
+        self._onReturn = None
+        self._onError = None
+
+    def callOnReturn(self, response):
+        #TODO: Add response message type checking, and add a way to ensure that code won't break if new fields are
+        # added to the response!
+        self.isError = False
+        self.response = response
+        if self._onReturn:
+            self._onReturn(response)
+
+    @property
+    def onReturn(self):
+        return self.callOnReturn
+
+    @onReturn.setter
+    def onReturn(self, callback):
+        #TODO: Locking?
+        if self.isError is False:
+            callback(self.response)
+
+        self._onReturn = callback
+
+    def callOnError(self, response):
+        self.isError = True
+        self.response = response
+        if self._onError:
+            self._onError(response)
+
+    @property
+    def onError(self):
+        return self.callOnError
+
+    @onReturn.setter
+    def onError(self, callback):
+        #TODO: Locking?
+        if self.isError is True:
+            callback(self.response)
+
+        self._onError = callback
 
 
 class Connection(object):
@@ -119,7 +164,7 @@ class Connection(object):
     def __init__(self, address=None):
         self.logger = loggerFor(self)
 
-        self.serverUUID = None
+        self._serverUUID = None
         self.reportedAuthMechanisms = None
         self.uniqueID = None
         self.callbacks = dict()
@@ -137,11 +182,18 @@ class Connection(object):
             self.connect(address)
 
     @property
+    def serverUUID(self):
+        """The UUID of the server.
+
+        """
+        return self._serverUUID
+
+    @property
     def serverGUID(self):
         """Alternate name for serverUUID, for backwards compatability.
 
         """
-        return self.serverUUID
+        return self._serverUUID
 
     @property
     def machineID(self):
@@ -191,7 +243,7 @@ class Connection(object):
             socketAddress = kwargs['path']
         except KeyError:
             try:
-                # The D-Bus spec doesn't mention it, but abstract namespace UNIX domain sockets on Linux start
+                # The D-Bus spec doesn't mention it, but abstract namespace UNIX domain socket names on Linux start
                 # with a null byte.
                 socketAddress = '\0' + kwargs['abstract']
             except KeyError:
@@ -250,8 +302,7 @@ class Connection(object):
         self.logger.info("Authentication failed; trying next method.")
         self.authenticate()
 
-    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None, onReturn=None,
-            onError=None):
+    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None):
         msg = message.Message(inSignature)
 
         h = msg.header
@@ -269,7 +320,34 @@ class Connection(object):
 
         print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
         self.send(msg.render())
-        self.callbacks[msg.header.serial] = Callbacks(onReturn, onError)
+
+        callbacks = Callbacks()
+        self.callbacks[msg.header.serial] = callbacks
+        return callbacks
+
+    def emitSignal(self, objectPath, member, signature='', args=[], interface=None, destination=None):
+        #FIXME: Finish!
+        msg = message.Message(signature)
+
+        h = msg.header
+        h.messageType = message.Types.METHOD_CALL
+
+        h.headerFields[message.HeaderFields.PATH] = types.Variant(objectPath, types.ObjectPath)
+        h.headerFields[message.HeaderFields.MEMBER] = types.Variant(member, types.String)
+
+        if interface is not None:
+            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
+        if destination is not None:
+            h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(destination, types.String)
+
+        msg.body = args
+
+        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
+        self.send(msg.render())
+
+        callbacks = Callbacks(onReturn, onError)
+        self.callbacks[msg.header.serial] = callbacks
+        return callbacks
 
     def listenForSignal(self, interface, handler, **kwargs):
         if len(kwargs) > 0:

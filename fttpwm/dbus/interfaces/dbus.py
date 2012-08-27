@@ -56,6 +56,155 @@ class DBus(DBusInterface('org.freedesktop.DBus')):
 
         """
 
+    @Method(inSig='su', outSig='u')
+    def RequestName(self):
+        """org.freedesktop.DBus.RequestName
+
+        UINT32 RequestName (in STRING name, in UINT32 flags)
+
+        Message arguments:
+            Argument  Type    Description
+            0         STRING  Name to request
+            1         UINT32  Flags
+
+        Reply arguments:
+            Argument  Type    Description
+            0         UINT32  Return value
+
+        This method call should be sent to org.freedesktop.DBus and asks the message bus to assign the given name to
+        the method caller. Each name maintains a queue of possible owners, where the head of the queue is the primary
+        or current owner of the name. Each potential owner in the queue maintains the DBUS_NAME_FLAG_ALLOW_REPLACEMENT
+        and DBUS_NAME_FLAG_DO_NOT_QUEUE settings from its latest RequestName call. When RequestName is invoked the
+        following occurs:
+
+         - If the method caller is currently the primary owner of the name, the DBUS_NAME_FLAG_ALLOW_REPLACEMENT and
+            DBUS_NAME_FLAG_DO_NOT_QUEUE values are updated with the values from the new RequestName call, and nothing
+            further happens.
+
+         - If the current primary owner (head of the queue) has DBUS_NAME_FLAG_ALLOW_REPLACEMENT set, and the
+            RequestName invocation has the DBUS_NAME_FLAG_REPLACE_EXISTING flag, then the caller of RequestName
+            replaces the current primary owner at the head of the queue and the current primary owner moves to the
+            second position in the queue. If the caller of RequestName was in the queue previously its flags are
+            updated with the values from the new RequestName in addition to moving it to the head of the queue.
+
+         - If replacement is not possible, and the method caller is currently in the queue but not the primary owner,
+            its flags are updated with the values from the new RequestName call.
+
+         - If replacement is not possible, and the method caller is currently not in the queue, the method caller is
+            appended to the queue.
+
+         - If any connection in the queue has DBUS_NAME_FLAG_DO_NOT_QUEUE set and is not the primary owner, it is
+            removed from the queue. This can apply to the previous primary owner (if it was replaced) or the method
+            caller (if it updated the DBUS_NAME_FLAG_DO_NOT_QUEUE flag while still stuck in the queue, or if it was
+            just added to the queue with that flag set).
+
+        Note that DBUS_NAME_FLAG_REPLACE_EXISTING results in "jumping the queue," even if another application already
+        in the queue had specified DBUS_NAME_FLAG_REPLACE_EXISTING. This comes up if a primary owner that does not
+        allow replacement goes away, and the next primary owner does allow replacement. In this case, queued items that
+        specified DBUS_NAME_FLAG_REPLACE_EXISTING do not automatically replace the new primary owner. In other words,
+        DBUS_NAME_FLAG_REPLACE_EXISTING is not saved, it is only used at the time RequestName is called. This is
+        deliberate to avoid an infinite loop anytime two applications are both DBUS_NAME_FLAG_ALLOW_REPLACEMENT and
+        DBUS_NAME_FLAG_REPLACE_EXISTING.
+
+        The flags argument contains any of the following values logically ORed together:
+
+            Conventional Name                 Value  Description
+            DBUS_NAME_FLAG_ALLOW_REPLACEMENT  0x1    If an application A specifies this flag and succeeds in becoming
+                                                     the owner of the name, and another application B later calls
+                                                     RequestName with the DBUS_NAME_FLAG_REPLACE_EXISTING flag, then
+                                                     application A will lose ownership and receive a
+                                                     org.freedesktop.DBus.NameLost signal, and application B will
+                                                     become the new owner. If DBUS_NAME_FLAG_ALLOW_REPLACEMENT is not
+                                                     specified by application A, or DBUS_NAME_FLAG_REPLACE_EXISTING is
+                                                     not specified by application B, then application B will not
+                                                     replace application A as the owner.
+            DBUS_NAME_FLAG_REPLACE_EXISTING   0x2    Try to replace the current owner if there is one. If this flag is
+                                                     not set the application will only become the owner of the name if
+                                                     there is no current owner. If this flag is set, the application
+                                                     will replace the current owner if the current owner specified
+                                                     DBUS_NAME_FLAG_ALLOW_REPLACEMENT.
+            DBUS_NAME_FLAG_DO_NOT_QUEUE       0x4    Without this flag, if an application requests a name that is
+                                                     already owned, the application will be placed in a queue to own
+                                                     the name when the current owner gives it up. If this flag is
+                                                     given, the application will not be placed in the queue, the
+                                                     request for the name will simply fail. This flag also affects
+                                                     behavior when an application is replaced as name owner; by default
+                                                     the application moves back into the waiting queue, unless this
+                                                     flag was provided when the application became the name owner.
+
+        The return code can be one of the following values:
+
+            Conventional Name                      Value  Description
+            DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER  1      The caller is now the primary owner of the name, replacing
+                                                          any previous owner. Either the name had no owner before, or
+                                                          the caller specified DBUS_NAME_FLAG_REPLACE_EXISTING and the
+                                                          current owner specified DBUS_NAME_FLAG_ALLOW_REPLACEMENT.
+            DBUS_REQUEST_NAME_REPLY_IN_QUEUE       2      The name already had an owner, DBUS_NAME_FLAG_DO_NOT_QUEUE
+                                                          was not specified, and either the current owner did not
+                                                          specify DBUS_NAME_FLAG_ALLOW_REPLACEMENT or the requesting
+                                                          application did not specify DBUS_NAME_FLAG_REPLACE_EXISTING.
+            DBUS_REQUEST_NAME_REPLY_EXISTS         3      The name already has an owner, DBUS_NAME_FLAG_DO_NOT_QUEUE
+                                                          was specified, and either DBUS_NAME_FLAG_ALLOW_REPLACEMENT
+                                                          was not specified by the current owner, or
+                                                          DBUS_NAME_FLAG_REPLACE_EXISTING was not specified by the
+                                                          requesting application.
+            DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER  4      The application trying to request ownership of a name is
+                                                          already the owner of it.
+
+        """
+
+    @Method(inSig='s', outSig='u')
+    def ReleaseName(self):
+        """org.freedesktop.DBus.ReleaseName
+
+        UINT32 ReleaseName (in STRING name)
+
+
+        Message arguments:
+            Argument  Type    Description
+            0         STRING  Name to release
+
+        Reply arguments:
+            Argument  Type    Description
+            0         UINT32  Return value
+
+        This method call should be sent to org.freedesktop.DBus and asks the message bus to release the method caller's
+        claim to the given name. If the caller is the primary owner, a new primary owner will be selected from the
+        queue if any other owners are waiting. If the caller is waiting in the queue for the name, the caller will
+        removed from the queue and will not be made an owner of the name if it later becomes available. If there are no
+        other owners in the queue for the name, it will be removed from the bus entirely. The return code can be one of
+        the following values:
+
+            Conventional Name                     Value  Description
+            DBUS_RELEASE_NAME_REPLY_RELEASED      1      The caller has released his claim on the given name. Either
+                                                         the caller was the primary owner of the name, and the name is
+                                                         now unused or taken by somebody waiting in the queue for the
+                                                         name, or the caller was waiting in the queue for the name and
+                                                         has now been removed from the queue.
+            DBUS_RELEASE_NAME_REPLY_NON_EXISTENT  2      The given name does not exist on this bus.
+            DBUS_RELEASE_NAME_REPLY_NOT_OWNER     3      The caller was not the primary owner of this name, and was
+                                                         also not waiting in the queue to own this name.
+        """
+
+    @Method(inSig='s', outSig='as')
+    def ListQueuedOwners(self):
+        """org.freedesktop.DBus.ListQueuedOwners
+
+        ARRAY of STRING ListQueuedOwners (in STRING name)
+
+        Message arguments:
+        Argument  Type    Description
+        0         STRING  The well-known bus name to query, such as com.example.cappuccino
+
+        Reply arguments:
+        Argument  Type             Description
+        0         ARRAY of STRING  The unique bus names of connections currently queued for the name
+
+        This method call should be sent to org.freedesktop.DBus and lists the connections currently queued for a bus
+        name.
+
+        """
+
     @Method(outSig='as')
     def ListNames(self):
         """org.freedesktop.DBus.ListNames

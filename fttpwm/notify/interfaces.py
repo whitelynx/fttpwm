@@ -99,92 +99,95 @@ class NotificationsInterface(DBusInterface('org.freedesktop.Notifications')):
 ###################################
 
 
-class NotificationServer(LocalObject):
-    def __init__(self, object_path, bus=None):
-        if bus is None:
-            bus = singletons.dbusSessionBus
-        super(NotificationServer, self).__init__(object_path, bus)
+def test():
+    """NOTE: This test is untested.
 
-    @NotificationsInterface.GetCapabilities
-    def GetCapabilities(self):
-        """Returns an array of strings, each of which describes an optional capability implemented by the server.
+    It is likely to break.
 
-        """
+    """
+    class NotificationServer(LocalObject):
+        def __init__(self, object_path, bus=None):
+            if bus is None:
+                bus = singletons.dbusSessionBus
+            super(NotificationServer, self).__init__(object_path, bus)
 
-    @NotificationsInterface.GetServerInformation
-    def GetServerInformation(self):
-        """Retrieve the server's name, vendor, and version number.
+        @NotificationsInterface.GetCapabilities
+        def GetCapabilities(self):
+            """Returns an array of strings, each of which describes an optional capability implemented by the server.
 
-        """
+            """
 
-    @NotificationsInterface.Notify
-    def Notify(self, appName, replacesID, appIcon, summary, body='', actions=[], hints={}, expireTimeout=-1):
-        """Send a notification to the notification server.
+        @NotificationsInterface.GetServerInformation
+        def GetServerInformation(self):
+            """Retrieve the server's name, vendor, and version number.
 
-        """
+            """
 
-    @NotificationsInterface.CloseNotification
-    def CloseNotification(self, id):
-        """Causes a notification to be forcefully closed and removed from the user's view. It can be used, for example,
-        in the event that what the notification pertains to is no longer relevant, or to cancel a notification with no
-        expiration time.
+        @NotificationsInterface.Notify
+        def Notify(self, appName, replacesID, appIcon, summary, body='', actions=[], hints={}, expireTimeout=-1):
+            """Send a notification to the notification server.
 
-        """
+            """
 
-    @NotificationsInterface.NotificationClosed
-    def NotificationClosed(id, reason):
-        """A notification has timed out, or has been dismissed by the user.
+        @NotificationsInterface.CloseNotification
+        def CloseNotification(self, id):
+            """Causes a notification to be forcefully closed and removed from the user's view. It can be used, for example,
+            in the event that what the notification pertains to is no longer relevant, or to cancel a notification with no
+            expiration time.
 
-        """
-        # Run just before the signal is actually emitted.
+            """
 
-    @NotificationsInterface.ActionInvoked
-    def ActionInvoked(id, actionKey):
-        """An action has been invoked on a notification.
+        @NotificationsInterface.NotificationClosed
+        def NotificationClosed(id, reason):
+            """A notification has timed out, or has been dismissed by the user.
 
-        """
-        # Run just before the signal is actually emitted.
+            """
+            # Run just before the signal is actually emitted.
 
+        @NotificationsInterface.ActionInvoked
+        def ActionInvoked(id, actionKey):
+            """An action has been invoked on a notification.
 
-### Creating a remote proxy object ###
-class RemoteNotificationServer(RemoteObject):
-    notifications = NotificationsInterface()
+            """
+            # Run just before the signal is actually emitted.
 
-notifications = RemoteNotificationServer(
-        singletons.dbusSessionBus,  # Our connection to the bus
-        serverPath,  # The remote object's path
-        serverBusID  # The bus name of the connection this remote object lives on
-        )
+    ### Creating a remote proxy object ###
+    class RemoteNotificationServer(RemoteObject):
+        notifications = NotificationsInterface
 
+    notifications = RemoteNotificationServer(
+            singletons.dbusSessionBus,  # Our connection to the bus
+            serverPath,  # The remote object's path
+            serverBusID  # The bus name of the connection this remote object lives on
+            )
 
-### Calling a method on a remote proxy object ###
-appName = 'fttpwm examples'
-replacesID = 0
-appIcon = ''
-summary = "Something happened!"
-body = "...and that something is a test."
-actions = []
-hints = {}
-expireTimeout = -1
+    ### Calling a method on a remote proxy object ###
+    appName = 'fttpwm examples'
+    replacesID = 0
+    appIcon = ''
+    summary = "Something happened!"
+    body = "...and that something is a test."
+    actions = []
+    hints = {}
+    expireTimeout = -1
 
-notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
+    notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
 
-# Or, specifying a full type:
-notifications.Notify(
-        types.String(appName),
-        types.UInt32(replacesID),
-        types.String(appIcon),
-        types.String(summary),
-        types.String(body),
-        types.ARRAY(types.String)(actions),
-        types.DICT(types.String, types.String)(hints),
-        types.Int32(expireTimeout)
-        )
+    # Or, specifying a full type:
+    notifications.Notify(
+            types.String(appName),
+            types.UInt32(replacesID),
+            types.String(appIcon),
+            types.String(summary),
+            types.String(body),
+            types.ARRAY(types.String)(actions),
+            types.DICT(types.String, types.String)(hints),
+            types.Int32(expireTimeout)
+            )
 
+    # If more than one interface on the remote object defines the same method, we need to specify which interface to use:
+    notifications.notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
 
-# If more than one interface on the remote object defines the same method, we need to specify which interface to use:
-notifications.notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
-
-# Alternate way to specify the interface:
-notifications.Notify[NotificationsInterface](
-        appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
+    # Alternate way to specify the interface:
+    notifications.Notify[NotificationsInterface](
+            appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)

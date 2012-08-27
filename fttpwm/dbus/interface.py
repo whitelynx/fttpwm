@@ -6,7 +6,52 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from abc import ABCMeta, abstractmethod
 from weakref import ref
+
+from .. import signals
+
+
+#### Decorators ####
+
+def Method(inSig='', outSig='', resultFields=None):
+    """D-Bus interface method decorator
+
+    Example:
+
+        class SampleInterface(DBusInterface('com.example.Sample')):
+            @Method(inSig='v', outSig='s')
+            def StringifyVariant(self, var):
+                '''Turn the given Variant into a String.
+
+                '''
+            # ... other members ...
+
+    """
+    return lambda func: _InterfaceMethod(func, inSig, outSig, resultFields)
+
+
+def Signal(sig=''):
+    """D-Bus interface signal decorator
+
+    Example:
+
+        class SampleInterface(DBusInterface('com.example.Sample')):
+            @Signal(sig='v')
+            def LastInputChanged(self, var):
+                '''Emitted whenever StringifyVariant gets called with a different input.
+
+                '''
+            # ... other members ...
+
+    """
+    return lambda func: _InterfaceSignal(func, sig)
+
+
+#### Interfaces ####
+
+class _BaseDBusInterface(object):
+    pass
 
 
 def DBusInterface(interfaceName):
@@ -37,11 +82,14 @@ def DBusInterface(interfaceName):
                 '''
 
     """
-    class _DBusInterface(object):
+    class _DBusInterface(_BaseDBusInterface):
         __doc__ = """D-Bus interface base class for the {} interface
 
         """.format(interfaceName)
-        _dbus_interfaceName = interfaceName
+        dbus_name = interfaceName
+
+        def __init__(self, *args, **kwargs):
+            raise TypeError("You cannot instantiate interfaces!")
 
         @classmethod
         def _DBusInterface_getMembers(cls):
@@ -60,176 +108,283 @@ def DBusInterface(interfaceName):
                 if isinstance(member, _InterfaceMethod):
                     yield member
 
+        #TODO: Properties!
+
     return _DBusInterface
 
 
-class _LocalInterfaceMethodInfo(object):
-    """D-Bus interface method information, for wrapping local implementation methods.
+#### Interface Members ####
+
+class _BaseInterfaceMember(object):
+    """Base D-Bus interface member class
 
     """
-    def __init__(self, interfaceMethod, wrapped):
-        self.interfaceMethod = interfaceMethod
-        self.wrapped = wrapped
+    _dbus_wrapper_class = None
 
-    def __call__(self, *args, **kwargs):
-        """Call the wrapped method.
+    def __init__(self, func):
+        self.dbus_name = func.__name__
+        self.__doc__ = func.__doc__
+        self._dbus_interface = None
 
-        """
-        return self.wrapped(*args, **kwargs)
+    def __get__(self, instance, owner):
+        self._dbus_interface = ref(owner)
+        return self
 
+    def __unicode__(self):
+        return u'{}.{}'.format(self.dbus_interface_name, self.dbus_name)
 
-class _RemoteInterfaceMethodInfo(object):
-    """D-Bus interface method information, for wrapping methods on remote objects.
+    def __call__(self, wrappedFunc=None):
+        wrapper = self._dbus_wrapper_class(self, wrappedFunc)
+        wrapper.__name__ = '{}'.format(self.dbus_name)
+        wrapper.__doc__ = self.__doc__
+        return wrapper
 
-    """
-    def __init__(self, interfaceMethod, obj):
-        self.interfaceMethod = interfaceMethod
-        self.obj = obj
+    @property
+    def dbus_interface(self):
+        return self._dbus_interface()
 
-    def __call__(self, *args, **kwargs):
-        """Call this method on the remote object.
-
-        In addition to the arguments accepted by the remote method, the following keyword-only argument is accepted:
-        - `dbus_destination`: Tells the bus to only send the method call to the given connection
-
-        @returns a new `fttpwm.dbus.connection.Callbacks` object for this method call
-
-        """
-        destination = kwargs.pop('dbus_destination', None)
-
-        if len(kwargs) > 0:
-            raise NotImplementedError("Calling methods with explicit keyword arguments is not yet supported!")
-
-        self.obj._dbus_bus.callMethod(
-                self.obj._dbus_path,
-                self.interfaceMethod.methodName,
-                inSignature=self.interfaceMethod.inSignature,
-                args=args,
-                interface=self.interfaceMethod.interfaceName,
-                destination=destination
-                )
+    @property
+    def dbus_interface_name(self):
+        return self.dbus_interface.dbus_name
 
 
-class _InterfaceMethod(object):
+class _InterfaceMethod(_BaseInterfaceMember):
     """D-Bus interface method class
 
     """
     def __init__(self, func, inSig='', outSig='', resultFields=None):
-        self.methodName = func.__name__
-        self.__doc__ = func.__doc__
-        self.interface = None
-        self.interfaceName = None
+        self._dbus_wrapper_class = _InterfaceMethodInfo
 
-        self.inSignature = inSig
-        self.outSignature = outSig
+        super(_InterfaceMethod, self).__init__(func)
+
+        self.dbus_in_signature = inSig
+        self.dbus_out_signature = outSig
 
         self.resultFields = resultFields
         if isinstance(resultFields, basestring):
             self.resultFields = resultFields.split()
 
-    def __get__(self, instance, owner):
-        self.interface = ref(owner)
-        self.interfaceName = owner._dbus_interfaceName
-        return self
-
-    def __unicode__(self):
-        return u'{}.{}'.format(self.interfaceName, self.methodName)
-
-    def __call__(self, func):
-        return _LocalInterfaceMethodInfo(self, func)
+    def __repr__(self):
+        return u'<DBus interface method {}.{}>'.format(self.dbus_interface_name, self.dbus_name)
 
 
-def Method(inSig='', outSig='', resultFields=None):
-    """D-Bus interface method decorator
-
-    Example:
-
-        class SampleInterface(DBusInterface('com.example.Sample')):
-            @Method(inSig='v', outSig='s')
-            def StringifyVariant(self, var):
-                '''Turn the given Variant into a String.
-
-                '''
-            # ... other members ...
-
-    """
-    return lambda func: _InterfaceMethod(func, inSig, outSig, resultFields)
-
-
-class _LocalSignalWrapper(object):
-    def __init__(self, signal, preEmit):
-        self.signal = signal
-        self.obj = None
-        self.preEmit = preEmit
-
-    @property
-    def interface(self):
-        return self.signal.interface
-
-    @property
-    def interfaceName(self):
-        return self.signal.interfaceName
-
-    def __get__(self, instance, owner):
-        self.obj = instance
-        return self
-
-    def __call__(self, *args, **kwargs):
-        """Emit this signal from the object it is attached to.
-
-        The `SIGNAL` message will have its `PATH` set to the path of `obj`, its `INTERFACE` set to the name of the
-        interface in which this signal was defined, and `MEMBER` set to the signal's name.
-
-        """
-        if self.preEmit is not None:
-            self.preEmit(*args, **kwargs)
-
-        #FIXME: Implement!
-
-
-class _InterfaceSignal(object):
+class _InterfaceSignal(_BaseInterfaceMember):
     """D-Bus interface signal class
 
     """
     def __init__(self, func, sig=''):
-        self.signalName = func.__name__
-        self.__doc__ = func.__doc__
-        self.interface = None
-        self.interfaceName = None
+        self._dbus_wrapper_class = _InterfaceSignalInfo
+
+        super(_InterfaceSignal, self).__init__(func)
 
         self.signature = sig
 
-    def __get__(self, instance, owner):
-        self.interface = ref(owner)
-        self.interfaceName = owner._dbus_interfaceName
-        return self
-
-    def __unicode__(self):
-        return u'{}.{}'.format(self.interfaceName, self.signalName)
-
-    def __call__(self, preEmit=None):
-        wrapper = _LocalSignalWrapper(self, preEmit)
-        wrapper.__name__ = '{}'.format(self.signalName)
-        wrapper.__doc__ = self.__doc__
-        return wrapper
+    def __repr__(self):
+        return u'<DBus interface signal {}.{}>'.format(self.dbus_interface_name, self.dbus_name)
 
 
-def Signal(sig=''):
-    """D-Bus interface signal decorator
+#### DBus Object Members ####
 
-    Example:
-
-        class SampleInterface(DBusInterface('com.example.Sample')):
-            @Signal(sig='v')
-            def LastInputChanged(self, var):
-                '''Emitted whenever StringifyVariant gets called with a different input.
-
-                '''
-            # ... other members ...
+class _BaseInterfaceMemberInfo(object):
+    """D-Bus interface member information, for wrapping interface members in DBus objects.
 
     """
-    return lambda func: _InterfaceSignal(func, sig)
+    __metaclass__ = ABCMeta
 
+    def __init__(self, interfaceMember, wrappedFunction):
+        super(_BaseInterfaceMemberInfo, self).__init__()
+
+        self.dbus_member = interfaceMember
+        self._dbus_object = None
+        self._dbus_wrapped_func = wrappedFunction
+
+    def __get__(self, instance, owner):
+        self.dbus_object = instance
+        return self
+
+    @property
+    def dbus_name(self):
+        return self.dbus_member.dbus_name
+
+    @property
+    def dbus_object(self):
+        return self._dbus_object()
+
+    @dbus_object.setter
+    def dbus_object(self, instance):
+        self._dbus_object = ref(instance)
+
+    @property
+    def dbus_interface(self):
+        return self.dbus_member.dbus_interface
+
+    @property
+    def dbus_interface_name(self):
+        return self.dbus_member.dbus_interface_name
+
+    @property
+    def dbus_bus(self):
+        return self.dbus_object.dbus_bus
+
+    @property
+    def dbus_path(self):
+        return self.dbus_object.dbus_path
+
+
+class _CallableInterfaceMemberInfo(_BaseInterfaceMemberInfo):
+    """D-Bus interface member information, for wrapping interface members in DBus objects.
+
+    """
+    def __init__(self, interfaceMember, wrappedMethod):
+        super(_CallableInterfaceMemberInfo, self).__init__(interfaceMember, wrappedMethod)
+        self._dbus_do_call = None
+
+    @_BaseInterfaceMemberInfo.dbus_object.setter
+    def dbus_object(self, instance):
+        self._dbus_object = ref(instance)
+
+        try:
+            remote = globals()['remote']
+        except:
+            from . import remote
+            globals()['remote'] = remote
+
+        if isinstance(instance, remote.RemoteObject):
+            self._dbus_do_call = self.dbus_remote_call
+        else:
+            self._dbus_do_call = self.dbus_local_call
+
+        return self
+
+    def __call__(self, *args, **kwargs):
+        return self._dbus_do_call(*args, **kwargs)
+
+    @abstractmethod
+    def dbus_local_call(self, *args, **kwargs):
+        """Handle an incoming call to this member.
+
+        """
+
+    @abstractmethod
+    def dbus_remote_call(self, *args, **kwargs):
+        """Handle an outgoing call to this member.
+
+        """
+
+
+## Methods ##
+
+class _InterfaceMethodInfo(_CallableInterfaceMemberInfo):
+    """D-Bus interface method information, for wrapping local implementation methods and methods on remote objects.
+
+    """
+    def __init__(self, interfaceMethod, wrappedMethod):
+        super(_InterfaceMethodInfo, self).__init__(interfaceMethod, wrappedMethod)
+
+    def dbus_local_call(self, *args, **kwargs):
+        """Handle an incoming call to this member.
+
+        Call the wrapped method on the local implementation object.
+
+        """
+        return self._dbus_wrapped_func(self.dbus_object, *args, **kwargs)
+
+    def dbus_remote_call(self, *args, **kwargs):
+        """Handle an outgoing call to this member.
+
+        Send a `METHOD_CALL` message for this member to the remote object.
+
+        In addition to the arguments accepted by the wrapped method, an additional keyword-only argument is accepted:
+        - `dbus_destination`: Tells the bus to only send the method call to the given connection
+
+        This method will do two things:
+        - If this wrapper was instantiated using a decorator, the decorated method will be called.
+        - A `METHOD_CALL` message will be sent to the connected peer.  This message will have `PATH` set to the path of
+            the DBus object this wrapper is bound to, `INTERFACE` set to the name of the interface in which this method
+            was defined, and `MEMBER` set to the method's name. The message will also have `DESTINATION` set to the
+            value of the `dbus_destination` keyword argument, if given.
+
+        @returns a new `fttpwm.dbus.connection.Callbacks` object for this method call
+
+        """
+        if self._dbus_wrapped_func is not None:
+            self._dbus_wrapped_func(self.dbus_object, *args, **kwargs)
+
+        destination = kwargs.pop('dbus_destination', self.dbus_object.dbus_destination)
+
+        if len(kwargs) > 0:
+            raise NotImplementedError("Calling methods with explicit keyword arguments is not yet supported!")
+
+        return self.dbus_bus.callMethod(
+                self.dbus_path,
+                self.dbus_name,
+                inSignature=self.dbus_member.dbus_in_signature,
+                args=args,
+                interface=self.dbus_interface_name,
+                destination=destination
+                )
+
+
+## Signals ##
+
+class _InterfaceSignalInfo(_CallableInterfaceMemberInfo):
+    def __init__(self, interfaceSignal, wrappedMethod):
+        super(_InterfaceSignalInfo, self).__init__(interfaceSignal, wrappedMethod)
+        self.__signal = signals.Signal()
+
+    def __getattr__(self, name):
+        return getattr(self.__signal, name)
+
+    def dbus_local_call(self, *args, **kwargs):
+        """Handle an incoming call to this member.
+
+        Call the local implementation object's handler for this signal.
+
+        Handle this signal. Call the wrapped method on the local implementation object.
+
+        """
+        if self._dbus_wrapped_func is not None:
+            self._dbus_wrapped_func(self.dbus_object, *args, **kwargs)
+
+    def dbus_remote_call(self, *args, **kwargs):
+        """Handle an outgoing call to this member.
+
+        Emit this signal.
+
+        In addition to the arguments accepted by the wrapped signal, an additional keyword-only argument is accepted:
+        - `dbus_destination`: Tells the bus to only send the signal to the given connection
+
+        This method will do three things:
+        - If this wrapper was instantiated using a decorator, the decorated method will be called.
+        - All local signal handlers for this signal will be called, just like with `fttpwm.signals.Signal`.
+        - A `SIGNAL` message will be sent to the bus, notifying other clients that the signal has been emitted. This
+            message will have `PATH` set to the path of the DBus object this wrapper is bound to, `INTERFACE` set to
+            the name of the interface in which this signal was defined, and `MEMBER` set to the signal's name. The
+            message will also have `DESTINATION` set to the value of the `dbus_destination` keyword argument, if given.
+
+        """
+        if self._dbus_wrapped_func is not None:
+            self._dbus_wrapped_func(self.dbus_object, *args, **kwargs)
+
+        self.__signal(*args, **kwargs)
+
+        destination = kwargs.pop('dbus_destination', None)
+
+        if len(kwargs) > 0:
+            raise NotImplementedError("Emitting signals with explicit keyword arguments is not yet supported!")
+
+        #def emitSignal(self, objectPath, member, signature='', args=[], interface=None, destination=None):
+        self.dbus_bus.emitSignal(
+                self.dbus_path,
+                self.dbus_name,
+                signature=self.dbus_member.dbus_signature,
+                args=args,
+                interface=self.dbus_interface_name,
+                destination=destination
+                )
+
+
+#### Testing ####
 
 def _createSampleInterface():
     class SampleInterface(DBusInterface('com.example.Sample')):
@@ -267,7 +422,3 @@ def test():
     print(SampleInterface.LastInputChanged.__doc__)
     print(unicode(SampleInterface.GetLastInput), repr(SampleInterface.GetLastInput), dir(SampleInterface.GetLastInput))
     print(SampleInterface.GetLastInput.__doc__)
-
-
-if __name__ == '__main__':
-    test()

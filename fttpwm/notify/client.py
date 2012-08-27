@@ -5,27 +5,23 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
-from .. import singletons
+from ..dbus.interfaces.introspectable import Introspectable as IntrospectableInterface
+from ..dbus.remote import RemoteObject
 from ..signals import Signal
 from ..utils import loggerFor
 
-
-#TODO: Replace _call_Notifications with actual remote proxy objects!
-def _call_Notifications(bus, methodName, *args, **kwargs):
-    bus.callMethod(
-            '/org/freedesktop/Notifications',
-            methodName,
-            *args,
-            interface='org.freedesktop.Notifications',
-            destination='org.freedesktop.Notifications',
-            **kwargs
-            )
+from .interfaces import serverPath, serverBusID, NotificationsInterface
 
 
-class Server(object):
+class Server(RemoteObject):
+    ## DBus interfaces
+    notifications = NotificationsInterface
+    introspectable = IntrospectableInterface
+
     def __init__(self, bus=None):
+        super(Server, self).__init__(serverPath, destination=serverBusID, bus=bus)
+
         self.logger = loggerFor(self)
-        self.bus = bus or singletons.dbusSessionBus
 
         self.capabilities = None
         self.name = None
@@ -35,10 +31,7 @@ class Server(object):
         self.infoRetrieved = Signal()
 
     def getCapabilities(self):
-        cb = _call_Notifications(
-                self.bus,
-                'GetCapabilities'
-                )
+        cb = self.GetCapabilities()
         cb.onReturn = self._onGetCapabilitiesReturn
 
     def _onGetCapabilitiesReturn(self, response):
@@ -47,10 +40,7 @@ class Server(object):
         self.capabilities = response.body[0]
 
     def getServerInformation(self):
-        cb = _call_Notifications(
-                self.bus,
-                'GetServerInformation'
-                )
+        cb = self.GetServerInformation()
         cb.onReturn = self._onServerInformationReturn
 
     def _onServerInformationReturn(self, response):
@@ -59,7 +49,11 @@ class Server(object):
         self.name, self.vendor, self.version, self.spec_version = response.body
 
 
-class Notification(object):
+class Notification(RemoteObject):
+    ## DBus interfaces
+    notifications = NotificationsInterface
+    introspectable = IntrospectableInterface
+
     _notificationsByBusAndID = dict()
 
     @classmethod
@@ -83,8 +77,9 @@ class Notification(object):
             bus.listenForSignal(interface='org.freedesktop.Notifications', handler=handleNotificationsSignal)
 
     def __init__(self, appName, body, summary="", appIcon="", actions=[], hints={}, expirationMS=-1, bus=None):
-        self.bus = bus or singletons.dbusSessionBus
-        self.setupSignalHandlers(self.bus)
+        super(Notification, self).__init__(serverPath, destination=serverBusID, bus=bus)
+
+        self.setupSignalHandlers(self.dbus_bus)
 
         self.appName = appName
         self._notificationID = 0  # we start with 0 so the server will assign it an ID
@@ -102,12 +97,12 @@ class Notification(object):
     @notificationID.setter
     def notificationID(self, value):
         if self._notificationID != 0:
-            del self._notificationsByBusAndID[self.bus][self._notificationID]
+            del self._notificationsByBusAndID[self.dbus_bus][self._notificationID]
 
         self._notificationID = value
 
         if value != 0:
-            self._notificationsByBusAndID[self.bus][value] = self
+            self._notificationsByBusAndID[self.dbus_bus][value] = self
 
     def show(self, onReturn=lambda response: None):
         if self.notificationID != 0:
@@ -121,20 +116,15 @@ class Notification(object):
             self.onNotifyReturn(response)
             onReturn(response)
 
-        cb = _call_Notifications(
-                self.bus,
-                'Notify',
-                'susssasa{ss}i',
-                [
-                    self.appName,
-                    self.notificationID,  # spec calls this "replaces_id"
-                    self.appIcon,
-                    self.summary,
-                    self.body,
-                    self.actions,
-                    self.hints,
-                    self.expirationMS,
-                    ]
+        cb = self.Notify(
+                self.appName,
+                self.notificationID,  # spec calls this "replaces_id"
+                self.appIcon,
+                self.summary,
+                self.body,
+                self.actions,
+                self.hints,
+                self.expirationMS
                 )
         cb.onReturn = handleReturn
 
@@ -153,13 +143,8 @@ class Notification(object):
     def close(self):
         self.logger.info("Closing notification message %r.", self.notificationID)
 
-        cb = _call_Notifications(
-                self.bus,
-                'CloseNotification',
-                'u',
-                [
-                    self.notificationID,
-                    ]
+        cb = self.CloseNotification(
+                self.notificationID
                 )
         cb.onReturn = self.onReturn
 

@@ -8,33 +8,21 @@ Licensed under the MIT license; see the LICENSE file for details.
 """
 from collections import defaultdict
 import logging
-from weakref import WeakSet, WeakKeyDictionary, WeakValueDictionary
+import warnings
+from weakref import WeakSet
 
-from .interface import _LocalInterfaceMethodInfo
-from ..utils import naturalJoin
+from .. import singletons
+from ..utils import listpl, naturalJoin
+
+from .interface import _BaseInterfaceMemberInfo
+from .utils import MethodWrapper
 
 
 logger = logging.getLogger('fttpwm.dbus.local')
 
 
-class _MemberWrapper(WeakKeyDictionary):
-    def __init__(self, memberName, members, **overrides):
-        WeakKeyDictionary.__init__(
-                self,
-                ((m.interface(), m) for m in members)
-                )
-        self.update(overrides)
-
-        self.__name__ = memberName
-
-    def __call__(self, *args, **kwargs):
-        if len(self) == 1:
-            self.values()[0](*args, **kwargs)
-        else:
-            raise TypeError(
-                    '{} has {} overloads in different interfaces! You must call {}[SomeInterface](...) instead.'
-                        .format(self.__name, len(self), self.__name__)
-                    )
+class UnimplementedMemberWarning(UserWarning):
+    pass
 
 
 class _LocalObjectMeta(type):
@@ -50,43 +38,39 @@ class _LocalObjectMeta(type):
         membersByInterface = defaultdict(set)
         membersByDBusName = defaultdict(set)
         for member in dict_.values():
-            if isinstance(member, _LocalInterfaceMethodInfo):
-                ifaceMethod = member.interfaceMethod
-
-                membersByInterface[ifaceMethod.interface()].add(ifaceMethod)
-                membersByDBusName[ifaceMethod.methodName].add(ifaceMethod)
+            if isinstance(member, _BaseInterfaceMemberInfo):
+                membersByInterface[member.dbus_interface].add(member)
+                membersByDBusName[member.dbus_name].add(member)
 
         for interface, members in membersByInterface.items():
             # Check for unimplemented interface members.
             unimplemented = []
             for method in interface._DBusInterface_getMethods():
                 if method not in members:
-                    unimplemented.append(method.methodName)
+                    unimplemented.append(method.dbus_name)
 
             if len(unimplemented) > 0:
-                logger.warn("Class %r implements the methods %s from interface %r, but is missing %s!",
-                        name,
-                        naturalJoin(m.methodName for m in members),
-                        interface._dbus_interfaceName,
-                        naturalJoin(unimplemented)
+                warnings.warn(
+                        "Class {!r} implements the {} from interface {!r}, but is missing {}!".format(
+                            name,
+                            listpl((m.dbus_name for m in members), 'method'),
+                            interface.dbus_name,
+                            naturalJoin(unimplemented)
+                            ),
+                        UnimplementedMemberWarning,
+                        stacklevel=2
                         )
 
             # Add signal wrappers for all signals of this interface.
             for signal in interface._DBusInterface_getSignals():
-                if signal.signalName not in membersByDBusName:
-                    membersByDBusName[signal.signalName].add(signal())
+                membersByDBusName[signal.dbus_name].add(signal())
+
+            #TODO: Properties!
 
         dict_['_dbus_interfaces'] = WeakSet(membersByInterface.keys())
 
-        interfaceMembersByName = WeakValueDictionary()
         for memberName, members in membersByDBusName.items():
-            print('members with name {!r} present in interfaces: {}'.format(
-                    memberName, ', '.join(member.interfaceName for member in members)))
-            dict_[memberName] = _MemberWrapper(memberName, members)
-
-            interfaceMembersByName[memberName] = members
-
-        dict_['_dbus_interfaceMembersByName'] = interfaceMembersByName
+            dict_[memberName] = MethodWrapper(memberName, members)
 
         return type.__new__(mcs, name, bases, dict_)
 
@@ -98,8 +82,6 @@ class LocalObject(object):
 
         class Example(LocalObject):
             def __init__(self, object_path, bus=None):
-                if bus is None:
-                    bus = fttpwm.singletons.dbusSessionBus
                 super(Example, self).__init__(object_path, bus)
                 self._last_input = None
 
@@ -129,21 +111,21 @@ class LocalObject(object):
     """
     __metaclass__ = _LocalObjectMeta
 
-    def __init__(self, object_path, bus):
-        self._dbus_path = object_path
-        self._dbus_bus = bus
+    def __init__(self, object_path, bus=None):
+        self.dbus_path = object_path
+
+        if bus is None:
+            bus = singletons.dbusSessionBus
+        self.dbus_bus = bus
 
 
 def test():
     from .interface import _createSampleInterface
-    from .. import singletons
 
     SampleInterface = _createSampleInterface()
 
     class Example(LocalObject):
         def __init__(self, object_path, bus=None):
-            if bus is None:
-                bus = singletons.dbusSessionBus
             super(Example, self).__init__(object_path, bus)
             self._last_input = None
 
@@ -172,6 +154,7 @@ def test():
 
     print(unicode(Example), repr(Example), dir(Example))
     print(Example.__doc__)
+    print(Example._dbus_interfaces)
 
     example = Example('/com/foo/bar')
     print(unicode(example), repr(example), dir(example))

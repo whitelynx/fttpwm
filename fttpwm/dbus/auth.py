@@ -21,6 +21,7 @@ import weakref
 from ..utils import loggerFor
 
 from .proto.errors import NotEnoughData
+from .utils import NetDebug
 
 
 class Authenticator(object):
@@ -48,7 +49,7 @@ class Authenticator(object):
         else:
             data = data[0]
 
-        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(data.strip()))
+        NetDebug.dataOut('Authenticator', data.strip())
         self.logger.debug("Sending data: %r", data)
         self.bus().send(data)
 
@@ -71,7 +72,7 @@ class Authenticator(object):
         assert reader.read(2) == '\r\n'  # We're consuming the '\r\n' too.
 
         line = data[:endOffset]
-        print("\033[1;100;38;5;16min >>> {}\033[m".format(line))
+        NetDebug.dataIn('Authenticator', line)
         self.logger.debug("Received response: %r", line)
 
         response = line.split()
@@ -86,10 +87,9 @@ class Authenticator(object):
 
     def checkSuccess(self, response):
         if response[0] == 'OK':
-            self.bus().serverUUID = response[1]
             self.logger.info("Authentication succeeded; beginning session.")
             self.send('BEGIN\r\n')
-            self.bus().authSucceeded()
+            self.bus().authSucceeded(response[1])
 
         elif response[0] == 'REJECTED':
             self.logger.info("Authentication failed! Supported mechanisms: %s", ' '.join(response[1:]))

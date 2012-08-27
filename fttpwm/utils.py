@@ -40,6 +40,33 @@ def pl(number, singularUnit, pluralUnit=None, noSpace=False):
             )
 
 
+def listpl(sequence, singularName, pluralName=None, after=False):
+    """Attach the appropriate singular or plural units to the given list.
+
+    If `pluralName` is omitted, it defaults to `singularName + "s"`.
+    If `after` is True, the name is placed after the list instead of before it.
+
+    """
+    if pluralName is None:
+        pluralName = singularName + "s"
+
+    try:
+        length = len(sequence)
+    except TypeError:
+        sequence = list(sequence)
+        length = len(sequence)
+
+    if after:
+        fmt = '{list} {name}'
+    else:
+        fmt = '{name} {list}'
+
+    return fmt.format(
+            name=singularName if length == 1 else pluralName,
+            list=naturalJoin(sequence)
+            )
+
+
 def quoteStrings(sequence, quoteChar='"'):
     """Quote a sequence of strings using the given quote character.
 
@@ -59,14 +86,20 @@ def naturalJoin(sequence, serialComma=True):
     If `serialComma` is True (the default), the serial comma is used. (http://en.wikipedia.org/wiki/Serial_comma)
 
     """
-    if len(sequence) == 0:
+    try:
+        length = len(sequence)
+    except TypeError:
+        sequence = list(sequence)
+        length = len(sequence)
+
+    if length == 0:
         return ""
-    elif len(sequence) == 1:
+    elif length == 1:
         return sequence[0]
-    elif len(sequence) == 2:
-        "{} and {}".format(*sequence)
+    elif length == 2:
+        return "{} and {}".format(*sequence)
     else:
-        "{}{} and {}".format(', '.join(sequence[:-1]), ',' if serialComma else '', sequence[-1])
+        return "{}{} and {}".format(', '.join(sequence[:-1]), ',' if serialComma else '', sequence[-1])
 
 
 def convertAttributes(attributes):

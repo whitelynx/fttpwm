@@ -17,7 +17,7 @@ logger = logging.getLogger("fttpwm.examples.notify")
 
 
 from fttpwm.dbus.bus import SessionBus
-from fttpwm.notify.client import Notification
+from fttpwm.notify.client import Server, Notification
 
 try:
     from fttpwm.eventloop.zmq_loop import ZMQEventLoop
@@ -34,6 +34,7 @@ except ImportError:
 
 
 bus = None
+server = None
 
 notification = None
 notificationCount = 1
@@ -41,10 +42,12 @@ maxNotificationCount = 20
 
 
 def connect():
-    global bus
+    global bus, server
     print("\033[1;42;38;5;16mconnect\033[m")
+    SessionBus.machineID = '07b6ac7a4c79d9b9628392f30000bea1'
     bus = SessionBus()
     bus.identified.connect(onIdentified)
+    server = Server(bus)
 
 
 def onIdentified():
@@ -54,13 +57,10 @@ def onIdentified():
 
 
 def sendGetCapabilities():
+    global server
     print("\033[1;46;38;5;16mGetCapabilities\033[m")
-    bus.callMethod(
-            '/org/freedesktop/Notifications', 'GetCapabilities',
-            interface='org.freedesktop.Notifications',
-            destination='org.freedesktop.Notifications',
-            onReturn=onGetCapabilitiesReturn
-            )
+    cb = server.GetCapabilities()
+    cb.onReturn = onGetCapabilitiesReturn
 
 
 def onGetCapabilitiesReturn(response):

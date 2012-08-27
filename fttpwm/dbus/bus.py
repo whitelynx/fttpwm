@@ -20,13 +20,18 @@ from .remote import RemoteObject
 
 
 class Bus(RemoteObject):
-    dbus = DBusInterface()
-    introspectable = IntrospectableInterface()
+    ## DBus interfaces
+    dbus = DBusInterface
+    introspectable = IntrospectableInterface
+
+    ## DBus object information
+    busObjectPath = '/org/freedesktop/DBus'
 
     def __init__(self, address=None):
         self.connection = Connection(address)
+        self.serverUUID = None
 
-        super(Bus, self).__init__(self, '/org/freedesktop/DBus', 'org.freedesktop.DBus')
+        super(Bus, self).__init__(self.busObjectPath, destination='org.freedesktop.DBus', bus=self)
 
         self.logger = loggerFor(self)
         self.identified = signals.Signal()
@@ -36,19 +41,19 @@ class Bus(RemoteObject):
     def __getattr__(self, name):
         return getattr(self.connection, name)
 
+    @property
+    def machineID(self):
+        return Connection.machineID()
+
     def onAuthenticated(self):
-        def onReturn(response):
-            self.uniqueID, = response.body
+        cb = self.Hello()
+        cb.onReturn = self.onHelloReturn
 
-            self.logger.info("Got unique name %r from message bus.", self.uniqueID)
-            self.identified()
+    def onHelloReturn(self, response):
+        self.uniqueID, = response.body
 
-        cb = self.callMethod(
-                '/org/freedesktop/DBus', 'Hello',
-                interface='org.freedesktop.DBus',
-                destination='org.freedesktop.DBus',
-                )
-        cb.onReturn = onReturn
+        self.logger.info("Got unique name %r from message bus.", self.uniqueID)
+        self.identified()
 
 
 class SessionBus(Bus):

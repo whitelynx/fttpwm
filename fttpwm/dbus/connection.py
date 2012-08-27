@@ -21,9 +21,9 @@ from ..utils import loggerFor
 from ..eventloop.base import StreamEvents
 
 from .auth import CookieSHA1Auth, AnonymousAuth
-#from .proxy import signal, method
 from .proto import message, types
 from .proto.errors import NotEnoughData
+from .utils import NetDebug
 
 
 class RWBuffer(object):
@@ -195,10 +195,11 @@ class Connection(object):
         """
         return self._serverUUID
 
-    @property
+    @classmethod
     def machineID(self):
-        #FIXME: I have absolutely no idea how to get this! The spec doesn't seem to say.
-        return '07b6ac7a4c79d9b9628392f30000bea1'
+        # The spec doesn't mention this file at all, nor does it mention how this is generated. -.-
+        with open('/var/lib/dbus/machine-id', 'r') as machineIDFile:
+            return machineIDFile.read().strip()
 
     def parseAddressOptions(self, optionString):
         options = dict()
@@ -293,16 +294,17 @@ class Connection(object):
                     self.authenticator.name
                     )
 
-    def authSucceeded(self):
+    def authSucceeded(self, serverUUID):
         self.logger.info("Authentication succeeded.")
         self.isAuthenticated = True
+        self._serverUUID = serverUUID
         self.authenticated()
 
     def authFailed(self):
         self.logger.info("Authentication failed; trying next method.")
         self.authenticate()
 
-    def callMethod(self, objectPath, member, inSignature='', args=[], interface=None, destination=None):
+    def callMethod(self, objectPath, member, inSignature='', args=[], destination=None, interface=None):
         msg = message.Message(inSignature)
 
         h = msg.header
@@ -311,14 +313,17 @@ class Connection(object):
         h.headerFields[message.HeaderFields.PATH] = types.Variant(objectPath, types.ObjectPath)
         h.headerFields[message.HeaderFields.MEMBER] = types.Variant(member, types.String)
 
-        if interface is not None:
-            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
+        # If we are connected to a bus and `destination` is None, the method call will be interpreted by the bus
+        # itself; otherwise, it's routed to the specified connection.
         if destination is not None:
             h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(destination, types.String)
 
+        if interface is not None:
+            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
+
         msg.body = args
 
-        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
+        NetDebug.dataOut('Connection', msg)
         self.send(msg.render())
 
         callbacks = Callbacks()
@@ -326,28 +331,26 @@ class Connection(object):
         return callbacks
 
     def emitSignal(self, objectPath, member, signature='', args=[], interface=None, destination=None):
-        #FIXME: Finish!
         msg = message.Message(signature)
 
         h = msg.header
-        h.messageType = message.Types.METHOD_CALL
+        h.messageType = message.Types.SIGNAL
 
         h.headerFields[message.HeaderFields.PATH] = types.Variant(objectPath, types.ObjectPath)
         h.headerFields[message.HeaderFields.MEMBER] = types.Variant(member, types.String)
 
-        if interface is not None:
-            h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
+        if interface is None:
+            raise ValueError("`interface` cannot be None when emitting a signal!")
+        h.headerFields[message.HeaderFields.INTERFACE] = types.Variant(interface, types.String)
+
         if destination is not None:
+            # Unicast signal (uncommon)
             h.headerFields[message.HeaderFields.DESTINATION] = types.Variant(destination, types.String)
 
         msg.body = args
 
-        print("\033[1;48;5;236;38;5;16mout <<< {}\033[m".format(msg))
+        NetDebug.dataOut('Connection', msg)
         self.send(msg.render())
-
-        callbacks = Callbacks(onReturn, onError)
-        self.callbacks[msg.header.serial] = callbacks
-        return callbacks
 
     def listenForSignal(self, interface, handler, **kwargs):
         if len(kwargs) > 0:
@@ -371,7 +374,7 @@ class Connection(object):
         data = self.outgoing.reader.read()
 
         if len(data) > 0:
-            print("\033[1;44;38;5;16mhandleWrite\033[m")
+            print("\033[1;41;38;5;16mhandleWrite\033[m")
             sent = self.socket.send(data)
             self.outgoing.reader.seek(startPos + sent)
             self.logger.debug("Wrote %s bytes from outgoing buffer to socket.", sent)
@@ -395,7 +398,7 @@ class Connection(object):
             #raise IOError("Remote host disconnected!")
             return
 
-        print("\033[1;41;38;5;16mhandleRead\033[m")
+        print("\033[1;44;38;5;16mhandleRead\033[m")
         writePos = self.incoming.writer.position
         self.incoming.writer.write(data)
         self.logger.debug("Wrote %s bytes from socket to incoming buffer at position %s.", len(data), writePos)
@@ -433,7 +436,7 @@ class Connection(object):
     def handleMessageRead(self):
         try:
             response = message.Message.parseFile(self.incoming.reader)
-            print("\033[1;100;38;5;16min >>> {!r}\033[m".format(response))
+            NetDebug.dataIn('Connection', repr(response))
 
         except NotEnoughData:
             raise

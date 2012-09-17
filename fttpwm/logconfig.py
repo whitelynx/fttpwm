@@ -6,6 +6,7 @@ Copyright (c) 2012 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from datetime import datetime
 import logging
 import logging.config
 import os
@@ -64,7 +65,20 @@ class Logger(logging.Logger):
             self._log(TRACE, msg, args, **kwargs)
 
 
+class Formatter(logging.Formatter):
+    """A Formatter subclass that uses datetime.strftime instead of time.strftime, so the '%f' format (microseconds) is
+    supported.
+
+    """
+    def formatTime(self, record, datefmt=None):
+        created = datetime.fromtimestamp(record.created)
+        if datefmt is None:
+            return created.isoformat(' ')
+        return created.strftime(datefmt)
+
+
 def configure():
+    logging.Formatter = Formatter
     logging.Manager.getLogger = getLogger
     logging.addLevelName(TRACE, 'TRACE')
     logging.setLoggerClass(Logger)
@@ -73,11 +87,11 @@ def configure():
             "disable_existing_loggers": False,
             "formatters": {
                 "brief": {
-                    "datefmt": "%H:%M:%S",
+                    "datefmt": "%H:%M:%S.%f",
                     "format": "%(asctime)s [%(levelname)-8s] %(name)s:  %(message)s"
                     },
                 "colored": {
-                    "datefmt": "%H:%M:%S",
+                    "datefmt": "%H:%M:%S.%f",
                     "format": u"%(asctime)s %(bold)s%(blackForeground)s[%(resetTerm)s"
                         u"%(levelColor)s%(levelname)-8s%(resetTerm)s"
                         u"%(bold)s%(blackForeground)s]%(resetTerm)s "
@@ -85,7 +99,7 @@ def configure():
                         u"%(faint)s%(italic)s%(message)s%(resetTerm)s"
                     },
                 "default": {
-                    "datefmt": "%Y-%m-%d %H:%M:%S",
+                    "datefmt": "%Y-%m-%d %H:%M:%S.%f",
                     "format": "%(asctime)s [%(levelname)-8s] %(name)s:  %(message)s"
                     }
                 },

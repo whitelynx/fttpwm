@@ -156,6 +156,7 @@ except ImportError:
     class SVG(SolidColor):
         def __init__(self, filename, *args, **kwargs):
             logger.error("Couldn't import 'rsvg'! Falling back to a black background.")
+            super(SVG, self).__init__(*args, **kwargs)
 
 else:
     class SVG(ScalableWallpaper):

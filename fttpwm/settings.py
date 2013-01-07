@@ -24,9 +24,13 @@ class Settings(dict):
         self.__defaultSettings.update(kwargs)
 
     def loadSettings(self, filenames=__defaultRcFileLocations):
+        #TODO: Instead of just looking for the first settings file in the given locations, we should load all of them,
+        # overwriting lower-priority settings with higher-priority ones.
         for filename in filenames:
             if exists(filename):
                 settingsFile = filename
+                # We've found the settings file; stop looking.
+                break
 
         self.clear()
 

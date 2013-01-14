@@ -1,5 +1,8 @@
 from os.path import abspath, dirname, join
 
 
+resourceDir = dirname(abspath(__file__))
+
+
 def fullPath(resourcePath):
-    return join(dirname(abspath(__file__)), 'default-wallpaper.svg')
+    return join(resourceDir, 'default-wallpaper.svg')

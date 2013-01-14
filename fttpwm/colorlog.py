@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Colored logger class
 
-Copyright (c) 2011 David H. Bronke and Christopher S. Case
+Copyright (c) 2011-2013 David H. Bronke and Christopher S. Case
 Licensed under the MIT license; see the LICENSE file for details.
 
 """

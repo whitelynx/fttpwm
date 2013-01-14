@@ -92,10 +92,10 @@ def configure():
                     },
                 "colored": {
                     "datefmt": "%H:%M:%S.%f",
-                    "format": u"%(asctime)s %(bold)s%(blackForeground)s[%(resetTerm)s"
+                    "format": u"%(asctime)s %(bold)s%(blackFG)s[%(resetTerm)s"
                         u"%(levelColor)s%(levelname)-8s%(resetTerm)s"
-                        u"%(bold)s%(blackForeground)s]%(resetTerm)s "
-                        u"%(cyanForeground)s%(name)s%(bold)s%(blackForeground)s:%(resetTerm)s  "
+                        u"%(bold)s%(blackFG)s]%(resetTerm)s "
+                        u"%(cyanFG)s%(name)s%(bold)s%(blackFG)s:%(resetTerm)s  "
                         u"%(faint)s%(italic)s%(message)s%(resetTerm)s"
                     },
                 "default": {

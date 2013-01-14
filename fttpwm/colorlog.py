@@ -46,23 +46,23 @@ class ColoredConsoleHandler(logging.StreamHandler):
             record.blink = '\x1b[5m'
             record.inverse = '\x1b[7m'
 
-            record.blackForeground = '\x1b[30m'
-            record.redForeground = '\x1b[31m'
-            record.greenForeground = '\x1b[32m'
-            record.yellowForeground = '\x1b[33m'
-            record.blueForeground = '\x1b[34m'
-            record.magentaForeground = '\x1b[35m'
-            record.cyanForeground = '\x1b[36m'
-            record.whiteForeground = '\x1b[37m'
+            record.blackFG = '\x1b[30m'
+            record.redFG = '\x1b[31m'
+            record.greenFG = '\x1b[32m'
+            record.yellowFG = '\x1b[33m'
+            record.blueFG = '\x1b[34m'
+            record.magentaFG = '\x1b[35m'
+            record.cyanFG = '\x1b[36m'
+            record.whiteFG = '\x1b[37m'
 
-            record.blackBackground = '\x1b[30m'
-            record.redBackground = '\x1b[31m'
-            record.greenBackground = '\x1b[32m'
-            record.yellowBackground = '\x1b[33m'
-            record.blueBackground = '\x1b[34m'
-            record.magentaBackground = '\x1b[35m'
-            record.cyanBackground = '\x1b[36m'
-            record.whiteBackground = '\x1b[37m'
+            record.blackBG = '\x1b[30m'
+            record.redBG = '\x1b[31m'
+            record.greenBG = '\x1b[32m'
+            record.yellowBG = '\x1b[33m'
+            record.blueBG = '\x1b[34m'
+            record.magentaBG = '\x1b[35m'
+            record.cyanBG = '\x1b[36m'
+            record.whiteBG = '\x1b[37m'
 
             record.resetTerm = '\x1b[0m'  # normal
 
@@ -72,22 +72,22 @@ class ColoredConsoleHandler(logging.StreamHandler):
             record.underline = ''
             record.blink = ''
             record.inverse = ''
-            record.blackForeground = ''
-            record.redForeground = ''
-            record.greenForeground = ''
-            record.yellowForeground = ''
-            record.blueForeground = ''
-            record.magentaForeground = ''
-            record.cyanForeground = ''
-            record.whiteForeground = ''
-            record.blackBackground = ''
-            record.redBackground = ''
-            record.greenBackground = ''
-            record.yellowBackground = ''
-            record.blueBackground = ''
-            record.magentaBackground = ''
-            record.cyanBackground = ''
-            record.whiteBackground = ''
+            record.blackFG = ''
+            record.redFG = ''
+            record.greenFG = ''
+            record.yellowFG = ''
+            record.blueFG = ''
+            record.magentaFG = ''
+            record.cyanFG = ''
+            record.whiteFG = ''
+            record.blackBG = ''
+            record.redBG = ''
+            record.greenBG = ''
+            record.yellowBG = ''
+            record.blueBG = ''
+            record.magentaBG = ''
+            record.cyanBG = ''
+            record.whiteBG = ''
             record.resetTerm = ''
 
         return logging.StreamHandler.emit(self, record)
@@ -99,7 +99,7 @@ if __name__ == '__main__':
             'version': 1,
             "formatters": {
                 "colored": {
-                    "format": "%(bold)s%(blackForeground)s[%(resetTerm)s%(levelColor)s%(levelname)-8s%(resetTerm)s%(bold)s%(blackForeground)s]%(resetTerm)s %(cyanForeground)s%(name)s%(bold)s%(blackForeground)s:%(resetTerm)s  %(faint)s%(italic)s%(message)s%(resetTerm)s"
+                    "format": "%(bold)s%(blackFG)s[%(resetTerm)s%(levelColor)s%(levelname)-8s%(resetTerm)s%(bold)s%(blackFG)s]%(resetTerm)s %(cyanFG)s%(name)s%(bold)s%(blackFG)s:%(resetTerm)s  %(faint)s%(italic)s%(message)s%(resetTerm)s"
                     }
                 },
             'handlers': {

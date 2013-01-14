@@ -28,8 +28,8 @@ Requirements
 
 Configuration
 -------------
-FTTPWM can be configured by creating a `~/.fttpwmrc.py` file; I suggest you copy `fttpwm/default_fttpwmrc.py` and
-modify as needed.
+FTTPWM can be configured by creating a `~/.config/fttpwm/config.py` file; I suggest you copy `fttpwm/default_config.py`
+and modify as needed.
 
 
 Usage

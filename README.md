@@ -15,11 +15,15 @@ Requirements
 - [xpyb][]
 - [xpybutil][]
 - [py2cairo][] built with XCB support
+- [pyzmq][] (theoretically optional, but you REALLY don't want to run without it)
+- [python-rsvg][] (optional, but you won't be able to see the cool official FTTPWM wallpaper without it!)
 
 [Python]: http://python.org
 [xpyb]: http://pypi.python.org/pypi/xpyb/1.3.1
 [xpybutil]: https://github.com/BurntSushi/xpybutil
 [py2cairo]: http://cairographics.org/pycairo
+[pyzmq]: http://www.zeromq.org/bindings:python
+[python-rsvg]: https://live.gnome.org/LibRsvg
 
 
 Configuration

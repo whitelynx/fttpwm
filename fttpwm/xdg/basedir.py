@@ -29,7 +29,7 @@ class BaseDirManager(object):
         if dirsVar is None:
             self.dirs = []
         else:
-            self.dirs = os.environ.get(dirsVar, expanduser(defaultDirs)).split(':')
+            self.dirs = os.environ.get(dirsVar, defaultDirs).split(':')
 
     # From the spec:
     #   A specification that refers to $XDG_DATA_DIRS or $XDG_CONFIG_DIRS should define what the behaviour must be when

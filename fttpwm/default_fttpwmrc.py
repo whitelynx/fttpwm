@@ -81,7 +81,7 @@ autostart = [
             #xcompmgr -r 8 -l 5 -t 5 -o .7 -C -c
 
             # xcompmgr with no shadows
-            xcompmgr -n
+            #xcompmgr -n
             '''),
         xdg_autostart.execute,
         ]

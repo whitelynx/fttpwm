@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 import logging
+import os.path
 
 import cairo
 
@@ -161,9 +162,16 @@ except ImportError:
 else:
     class SVG(ScalableWallpaper):
         def __init__(self, filename, *args, **kwargs):
-            print filename
-            self.svg = rsvg.Handle(file=filename)
-            super(SVG, self).__init__(sourceSize=self.svg.get_properties('width', 'height'), *args, **kwargs)
+            if os.path.exists(filename):
+                logger.info("Loading SVG wallpaper: %s", filename)
+                self.svg = rsvg.Handle(file=filename)
+                sourceSize = self.svg.get_properties('width', 'height')
+            else:
+                logger.warning("Specified SVG wallpaper %r does not exist!", filename)
+                self.svg = None
+                sourceSize = (0, 0)
+
+            super(SVG, self).__init__(sourceSize=sourceSize, *args, **kwargs)
 
         def getContextMatrix(self, targetX, targetY, targetW, targetH):
             matrix = cairo.Matrix()
@@ -172,5 +180,6 @@ else:
             return matrix
 
         def paint(self, context, targetX, targetY, targetW, targetH):
-            context.set_matrix(self.getContextMatrix(targetX, targetY, targetW, targetH))
-            self.svg.render_cairo(context)
+            if self.svg is not None:
+                context.set_matrix(self.getContextMatrix(targetX, targetY, targetW, targetH))
+                self.svg.render_cairo(context)

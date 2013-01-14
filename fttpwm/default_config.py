@@ -1,9 +1,7 @@
 from os import chdir
 from os.path import expanduser
 
-from fttpwm.keyboard import bindKeys
 from fttpwm.layout import Floating, TabbedMaximized, Columns, Rows
-from fttpwm.mouse import bindMouse
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
 import fttpwm.resources as resources
@@ -17,7 +15,7 @@ import fttpwm.xdg.autostart as xdg_autostart
 
 META = 'Mod4+'
 
-bindKeys({
+keys = {
         META + 'Return': startSingle('urxvtc'),
         META + 'Control+Q': quit,
         META + '1': switchWorkspace(0),
@@ -42,13 +40,13 @@ bindKeys({
         META + 'N': focusPrevious,
         META + 'Shift+T': moveNext,
         META + 'Shift+N': movePrevious,
-        })
+        }
 
-bindMouse({
+mouse = {
         '1': _RaiseWindow(),
         META + '1': FloatingBindings.raiseAndMoveWindow,
         META + '3': FloatingBindings.raiseAndResizeWindow,
-        })
+        }
 
 theme = Default()
 

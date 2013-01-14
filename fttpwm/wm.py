@@ -30,6 +30,8 @@ from .signals import Signal
 from .signaled import SignaledDict
 from .statusbar import StatusBar
 from .workspace import WorkspaceManager
+from .keyboard import bindKeys
+from .mouse import bindMouse
 from . import singletons
 
 
@@ -86,8 +88,14 @@ class WM(object):
 
         self.checkForOtherWMs()
         self.startManaging()
+
         settings.loadSettings()
+
+        logger.info("Applying settings...")
         setWallpaper()
+        bindKeys(settings.keys)
+        bindMouse(settings.mouse)
+        logger.info("Finished applying settings.")
 
         logger.info("Running autostart commands...")
         for startAction in settings.autostart:

@@ -128,6 +128,9 @@ class CairoPattern(ScalableWallpaper):
         self.lastGeom = (0, 0, 1, 1)
 
     def paint(self, context, targetX, targetY, targetW, targetH):
+        if self.pattern is None:
+            return
+
         if self.lastGeom != (targetX, targetY, targetW, targetH):
             self.lastGeom = (targetX, targetY, targetW, targetH)
             self.pattern.set_matrix(self.getPatternMatrix(*self.lastGeom))
@@ -145,9 +148,22 @@ class CairoPattern(ScalableWallpaper):
 
 class PNG(CairoPattern):
     def __init__(self, filename, *args, **kwargs):
-        image = cairo.ImageSurface.create_from_png(filename)
-        pattern = cairo.SurfacePattern(image)
-        super(PNG, self).__init__(pattern, sourceSize=(image.get_width(), image.get_height()), *args, **kwargs)
+        self.filename = filename
+
+        if os.path.exists(filename):
+            logger.info("Loading PNG wallpaper: %s", filename)
+            image = cairo.ImageSurface.create_from_png(filename)
+            pattern = cairo.SurfacePattern(image)
+            sourceSize = (image.get_width(), image.get_height())
+        else:
+            logger.warning("Specified PNG wallpaper %r does not exist!", filename)
+            pattern = None
+            sourceSize = (0, 0)
+
+        super(PNG, self).__init__(pattern, sourceSize=sourceSize, *args, **kwargs)
+
+    def __unicode__(self):
+        return "<PNG wallpaper: {}>".format(self.filename)
 
 
 try:
@@ -162,6 +178,8 @@ except ImportError:
 else:
     class SVG(ScalableWallpaper):
         def __init__(self, filename, *args, **kwargs):
+            self.filename = filename
+
             if os.path.exists(filename):
                 logger.info("Loading SVG wallpaper: %s", filename)
                 self.svg = rsvg.Handle(file=filename)
@@ -172,6 +190,9 @@ else:
                 sourceSize = (0, 0)
 
             super(SVG, self).__init__(sourceSize=sourceSize, *args, **kwargs)
+
+        def __unicode__(self):
+            return "<SVG wallpaper: {}>".format(self.filename)
 
         def getContextMatrix(self, targetX, targetY, targetW, targetH):
             matrix = cairo.Matrix()

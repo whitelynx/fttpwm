@@ -198,8 +198,14 @@ class Connection(object):
     @classmethod
     def machineID(self):
         # The spec doesn't mention this file at all, nor does it mention how this is generated. -.-
-        with open('/var/lib/dbus/machine-id', 'r') as machineIDFile:
-            return machineIDFile.read().strip()
+        for file in ('/var/lib/dbus/machine-id', '/etc/machine-id'):
+            try:
+                with open(file, 'r') as machineIDFile:
+                    return machineIDFile.read().strip()
+            except IOError:
+                continue
+
+        raise RuntimeError("No D-Bus machine ID file found!")
 
     def parseAddressOptions(self, optionString):
         options = dict()

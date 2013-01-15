@@ -422,3 +422,7 @@ def test():
     print(SampleInterface.LastInputChanged.__doc__)
     print(unicode(SampleInterface.GetLastInput), repr(SampleInterface.GetLastInput), dir(SampleInterface.GetLastInput))
     print(SampleInterface.GetLastInput.__doc__)
+
+
+if __name__ == '__main__':
+    test()

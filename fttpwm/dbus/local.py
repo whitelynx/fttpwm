@@ -163,3 +163,7 @@ def test():
     print(example.LastInputChanged.__doc__)
     print(unicode(example.GetLastInput), repr(example.GetLastInput), dir(example.GetLastInput))
     print(example.GetLastInput.__doc__)
+
+
+if __name__ == '__main__':
+    test()

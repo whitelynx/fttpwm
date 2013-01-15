@@ -228,3 +228,7 @@ def test():
     print(remoteObj.LastInputChanged.__doc__)
     print(unicode(remoteObj.GetLastInput), repr(remoteObj.GetLastInput), dir(remoteObj.GetLastInput))
     print(remoteObj.GetLastInput.__doc__)
+
+
+if __name__ == '__main__':
+    test()

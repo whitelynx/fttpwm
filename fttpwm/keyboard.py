@@ -21,36 +21,6 @@ settings.setDefaults(
         )
 
 
-## Monkeypatch xpybutil to pass the X event to keyboard binding callbacks ##
-
-def __run_keybind_callbacks(e):
-    """
-    A private function that intercepts all key press/release events, and runs
-    their corresponding callback functions. Nothing much to see here, except
-    that we must mask out the trivial modifiers from the state in order to
-    find the right callback.
-
-    Callbacks are called in the order that they have been added. (FIFO.)
-
-    :param e: A Key{Press,Release} event.
-    :type e: xcb.xproto.Key{Press,Release}Event
-    :rtype: void
-    """
-    kc, mods = e.detail, e.state
-    for mod in keybind.TRIVIAL_MODS:
-        mods &= ~mod
-
-    key = (e.event, mods, kc)
-    for cb in getattr(keybind, '__keybinds').get(key, []):
-        # We want the event passed to our callbacks!
-        cb(e)
-
-# Monkeypatch!
-setattr(keybind, '__run_keybind_callbacks', __run_keybind_callbacks)
-
-## ###################################################################### ##
-
-
 def bindKeys(bindings):
     for keyString, binding in bindings.iteritems():
         binding = processBinding(binding)

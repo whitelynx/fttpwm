@@ -155,10 +155,32 @@ def test():
     class RemoteNotificationServer(RemoteObject):
         notifications = NotificationsInterface
 
+    from .. import logconfig
+    logconfig.configure()
+
+    import logging
+    logger = logging.getLogger("fttpwm.notify.interfaces.test")
+
+    try:
+        from fttpwm.eventloop.zmq_loop import ZMQEventLoop
+
+        eventloop = ZMQEventLoop()
+        logger.info("Using the ZeroMQ event loop.")
+
+    except ImportError:
+        logger.warn("Couldn't import ZeroMQ event loop! Falling back to polling event loop.", exc_info=True)
+
+        from fttpwm.eventloop.poll_loop import PollEventLoop
+
+        eventloop = PollEventLoop()
+
+    from ..dbus.bus import SessionBus
+    bus = SessionBus()
+
     notifications = RemoteNotificationServer(
-            singletons.dbusSessionBus,  # Our connection to the bus
-            serverPath,  # The remote object's path
-            serverBusID  # The bus name of the connection this remote object lives on
+            serverPath,   # The remote object's path
+            serverBusID,  # The bus name of the connection this remote object lives on
+            bus           # Our connection to the bus
             )
 
     ### Calling a method on a remote proxy object ###
@@ -186,8 +208,15 @@ def test():
             )
 
     # If more than one interface on the remote object defines the same method, we need to specify which interface to use:
-    notifications.notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
+    #FIXME: This is currently broken!
+    #notifications.notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
 
     # Alternate way to specify the interface:
     notifications.Notify[NotificationsInterface](
             appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
+
+    eventloop.run()
+
+
+if __name__ == '__main__':
+    test()

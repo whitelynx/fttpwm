@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """FTTPWM: Window layout actions
 
 Copyright (c) 2012 David H. Bronke

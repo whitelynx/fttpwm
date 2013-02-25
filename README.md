@@ -61,8 +61,6 @@ For the most part, we adhere to [PEP 8][]. There are a couple of differences fro
     - _E127 continuation line over-indented for visual indent_
     - _E128 continuation line under-indented for visual indent_
 
-  We disagree.
-
 In order to check the FTTPWM code with the [pep8][] style checker app, we use the following command:
 
     pep8-python2 --max-line-length=119 --ignore=E123,E124,E126,E127,E128 .

@@ -50,7 +50,7 @@ class WM(object):
         self.onStartup = Signal()
         self.timers = deque()
         self.whenQueueEmpty = set()
-        self.lastFocusedWindow = None
+        self.lastFocusedFrame = None
 
         assert singletons.wm is None
         singletons.wm = self
@@ -129,7 +129,7 @@ class WM(object):
 
         xpybutil.conn.flush()
 
-        self.lastFocusedWindow = frame
+        self.lastFocusedFrame = frame
 
     def onWorkspaceChanged(self):
         frame = self.focusedWindow
@@ -144,11 +144,11 @@ class WM(object):
 
     @focusedWindow.setter
     def focusedWindow(self, frame):
-        if self.lastFocusedWindow is not None:
+        if self.lastFocusedFrame is not None:
             try:
-                self.lastFocusedWindow.onLostFocus()
+                self.lastFocusedFrame.onLostFocus()
             except:
-                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.lastFocusedWindow)
+                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.lastFocusedFrame)
 
         if frame is None and self.workspaces.current.focusedWindow is not None:
             logger.warn("Setting workspace %r's focused window to None! (used to be %r)",
@@ -157,17 +157,17 @@ class WM(object):
         self.workspaces.current.focusedWindow = frame
 
         if frame is None:
-            self.lastFocusedWindow = None
+            self.lastFocusedFrame = None
         else:
             self._doFocus(frame)
 
     @property
-    def lastFocusedWindow(self):
+    def lastFocusedFrame(self):
         if self._lastFocusedWindow is not None:
             return self._lastFocusedWindow()
 
-    @lastFocusedWindow.setter
-    def lastFocusedWindow(self, frame):
+    @lastFocusedFrame.setter
+    def lastFocusedFrame(self, frame):
         if frame is None or isinstance(frame, weakref.ReferenceType):
             self._lastFocusedWindow = frame
         else:
@@ -399,7 +399,7 @@ class WM(object):
             except:
                 logger.exception("unmanageWindow: Error calling onLostFocus on %r.", frame)
 
-            self.lastFocusedWindow = None
+            self.lastFocusedFrame = None
 
         del self.windows[frame.clientWindowID]
         del self.frameWindows[frame.frameWindowID]

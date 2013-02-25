@@ -39,6 +39,7 @@ Because this is really light on features and probably pretty unstable at the mom
 day-to-day window manager. If you still want to play around with it, Xephyr (or Xnest if you don't have Xephyr) works
 quite well as a testbed:
 
+	:::bash
 	startx $(which python2) -m fttpwm -- $(which Xephyr) :1 -screen 1024x768
 
 
@@ -63,7 +64,8 @@ For the most part, we adhere to [PEP 8][]. There are a couple of differences fro
 
 In order to check the FTTPWM code with the [pep8][] style checker app, we use the following command:
 
-    pep8-python2 --max-line-length=119 --ignore=E123,E124,E126,E127,E128 .
+	:::bash
+	pep8-python2 --max-line-length=119 --ignore=E123,E124,E126,E127,E128 .
 
 [PEP 8]: http://www.python.org/dev/peps/pep-0008
 [pep8]: https://pypi.python.org/pypi/pep8

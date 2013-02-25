@@ -28,7 +28,7 @@ class PollEventLoop(BaseEventLoop):
         self.running = False
         self.handlers = dict()
         self.timers = []
-        self.idleCallbacks = list()
+        self.idleCallbacks = set()
 
         # select.poll won't work on Windows, but at the moment I don't particularly care. This can be implemented with
         # select.select later if someone wants it.
@@ -48,11 +48,12 @@ class PollEventLoop(BaseEventLoop):
         """
         self.callAt(time.time() + self.asTimedelta(delay).total_seconds(), callback)
 
-    def callWhenIdle(self, callback):
+    def callWhenIdle(self, callback, allowDuplicates=False):
         """Call the given `callback` the next time there are no waiting events.
 
         """
-        self.idleCallbacks.append(callback)
+        if allowDuplicates or callback not in self.idleCallbacks:
+            self.idleCallbacks.add(callback)
 
     @property
     def timeToNextTimer(self):
@@ -98,10 +99,11 @@ class PollEventLoop(BaseEventLoop):
         for fd, evt in wakeups:
             self.handlers.get((fd, evt), self.missingHandler)(fd, evt)
 
-        if len(wakeups) == 0:
+        if len(wakeups) == 0 and self.idleCallbacks:
             # No waiting events; run all the callbacks in idleCallbacks, and clear it.
             callbacks = self.idleCallbacks
-            self.idleCallbacks = list()
+            self.idleCallbacks = set()
+
             for callback in callbacks:
                 callback()
 

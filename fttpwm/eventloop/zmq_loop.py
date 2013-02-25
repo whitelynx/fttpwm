@@ -23,6 +23,7 @@ class ZMQEventLoop(BaseEventLoop):
     def __init__(self):
         super(ZMQEventLoop, self).__init__()
         self.io_loop = zmq.eventloop.ioloop.IOLoop.instance()
+        self.idleCallbacks = set()
 
     def callAt(self, deadline, callback):
         """Call the given `callback` at the time given by `deadline`.
@@ -38,11 +39,19 @@ class ZMQEventLoop(BaseEventLoop):
         """
         return self.io_loop.add_timeout(self.asTimedelta(delay), callback)
 
-    def callWhenIdle(self, callback):
+    def callWhenIdle(self, callback, allowDuplicates=False):
         """Call the given `callback` the next time there are no waiting events.
 
         """
-        self.io_loop.add_callback(callback)
+        if allowDuplicates:
+            self.io_loop.add_callback(callback)
+        else:
+            def callCB():
+                self.idleCallbacks.discard(callback)
+                callback()
+
+            self.idleCallbacks.add(callback)
+            self.io_loop.add_callback(callCB)
 
     def callEvery(self, interval, callback):
         """Call the given `callback` once every `interval`.

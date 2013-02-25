@@ -60,7 +60,7 @@ class BaseEventLoop(object):
         self.callAfter(interval, cb)
 
     @abstractmethod
-    def callWhenIdle(self, callback):
+    def callWhenIdle(self, callback, allowDuplicates=False):
         """Call the given `callback` the next time there are no waiting events.
 
         """

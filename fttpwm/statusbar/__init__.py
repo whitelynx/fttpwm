@@ -1,29 +1,21 @@
 """FTTPWM: Status bar
 
-Copyright (c) 2012 David H. Bronke
+Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 
-import xcb
-from xcb.xproto import CW, ConfigWindow, StackMode, ConfigureNotifyEvent
+from xcb.xproto import CW, ConfigureNotifyEvent
 
 import xpybutil
 import xpybutil.event
 import xpybutil.ewmh as ewmh
-import xpybutil.icccm as icccm
-from xpybutil.util import get_atom as atom
 
 import cairo
 
-from ..bindings.layout import Floating as FloatingBindings
-from ..ewmh import EWMHAction, EWMHWindowState
-from ..mouse import bindMouse
-from ..signals import Signal
 from ..settings import settings
-from ..themes import Default, fonts
 from ..utils.time import StrftimeFormatter
 from .. import singletons
 

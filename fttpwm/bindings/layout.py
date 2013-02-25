@@ -7,7 +7,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 import logging
 
 import xcb
-from xcb.xproto import Circulate, ConfigWindow, StackMode
+from xcb.xproto import Circulate, ConfigWindow
 
 import xpybutil
 

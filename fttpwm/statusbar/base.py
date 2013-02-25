@@ -5,27 +5,16 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from abc import ABCMeta, abstractmethod
-from datetime import datetime, timedelta
 import logging
 
-import xcb
-from xcb.xproto import CW, ConfigWindow, StackMode, ConfigureNotifyEvent
+from xcb.xproto import CW
 
 import xpybutil
 import xpybutil.event
-import xpybutil.ewmh as ewmh
-import xpybutil.icccm as icccm
-from xpybutil.util import get_atom as atom
 
 import cairo
 
-from ..bindings.layout import Floating as FloatingBindings
-from ..ewmh import EWMHAction, EWMHWindowState
-from ..icccm import ICCCMWindowState
-from ..mouse import bindMouse
-from ..signals import Signal
 from ..settings import settings
-from ..themes import Default, fonts
 from ..utils.x import convertAttributes
 from ..utils.time import StrftimeFormatter
 from .. import singletons
@@ -82,7 +71,8 @@ class PixmapBackedWidget(BaseWidget):
                 ))
 
         # Set up Cairo.
-        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.pixmapID, singletons.x.visual, self.width, self.height)
+        self.pixmapSurface = cairo.XCBSurface(xpybutil.conn, self.pixmapID, singletons.x.visual,
+                self.width, self.height)
         self.pixmapContext = cairo.Context(self.pixmapSurface)
         self.pixmapContext.set_operator(cairo.OPERATOR_OVER)
 

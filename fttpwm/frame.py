@@ -21,9 +21,7 @@ from xpybutil.util import get_atom as atom
 
 import cairo
 
-from .bindings.layout import Floating as FloatingBindings
 from .ewmh import EWMHAction, EWMHWindowState
-from .mouse import bindMouse
 from .signals import Signal
 from .signaled import SignaledSet, SignaledDict
 from .settings import settings

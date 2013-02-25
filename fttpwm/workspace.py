@@ -17,7 +17,7 @@ from . import singletons
 from .settings import settings
 from .signals import Signal
 from .signaled import SignaledList, SignaledDict
-from .layout import Rows
+from .layout.simpletile import Rows
 from .utils.history import HistoryStack
 
 

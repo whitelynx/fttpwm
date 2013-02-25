@@ -674,6 +674,10 @@ class WindowFrame(object):
         return EWMHWindowState.Focused in self.ewmhStates
 
     @property
+    def valid(self):
+        return self.initialized and not self.clientDestroyed
+
+    @property
     def icccmState(self):
         return self._icccmState
 

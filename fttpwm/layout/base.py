@@ -31,6 +31,9 @@ class BaseLayout(object):
         cls = type(self)
         return '{}.{}'.format(cls.__name__, cls.__module__)
 
+    def tabs(self, frame):
+        return None
+
 
 class TilingLayout(BaseLayout):
     def __init__(self, padding=0):
@@ -75,6 +78,9 @@ class ListLayout(BaseLayout):
     def onFramePositioned(self, index, frame, ws, frameCount):
         # By default, ensure all frames are visible
         frame.onShow()
+
+    def sortedFrames(self, ws):
+        return sorted(ws.viewableFrames, key=lambda frame: frame.getLayoutInfo(self).get('index', float('inf')))
 
     def moveFrame(self, frame, n):
         """Move the frame forward or backward within its list of siblings by the given number of positions.

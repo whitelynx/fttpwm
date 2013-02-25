@@ -28,3 +28,6 @@ class TabbedMaximized(ListLayout, TilingLayout):
         # Only show the currently-focused frame.
         if frame is not ws.focusedWindow:
             frame.hide()
+
+    def tabs(self, frame):
+        return frame.workspace.viewableFrames

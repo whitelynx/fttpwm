@@ -150,12 +150,20 @@ class XConnection(object):
                 )
 
     def updateKeyboardMapping(self):
-        xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateKeyboardMapping)
-        self.pendingUpdateKeyboardMapping = None
+        logger.debug("Keyboard mapping changed; updating xpybutil bindings...")
+        try:
+            xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateKeyboardMapping)
+            self.pendingUpdateKeyboardMapping = None
+        except:
+            logger.exception("Exception while updating xpybutil bindings for new keyboard mapping!")
 
     def updateModifierMapping(self):
-        xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateModifierMapping)
-        self.pendingUpdateModifierMapping = None
+        logger.debug("Modifier mapping changed; updating xpybutil bindings...")
+        try:
+            xpybutil.keybind.update_keyboard_mapping(self.pendingUpdateModifierMapping)
+            self.pendingUpdateModifierMapping = None
+        except:
+            logger.exception("Exception while updating xpybutil bindings for new modifier mapping!")
 
     def handleXCBComm(self, stream, evt):
         """Read all incoming data from the X server, and process all resulting events.

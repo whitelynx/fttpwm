@@ -99,7 +99,10 @@ if __name__ == '__main__':
             'version': 1,
             "formatters": {
                 "colored": {
-                    "format": "%(bold)s%(blackFG)s[%(resetTerm)s%(levelColor)s%(levelname)-8s%(resetTerm)s%(bold)s%(blackFG)s]%(resetTerm)s %(cyanFG)s%(name)s%(bold)s%(blackFG)s:%(resetTerm)s  %(faint)s%(italic)s%(message)s%(resetTerm)s"
+                    "format": "%(bold)s%(blackFG)s[%(resetTerm)s%(levelColor)s%(levelname)-8s"
+                        + "%(resetTerm)s%(bold)s%(blackFG)s]%(resetTerm)s"
+                        + " %(cyanFG)s%(name)s%(bold)s%(blackFG)s:%(resetTerm)s"
+                        + "  %(faint)s%(italic)s%(message)s%(resetTerm)s"
                     }
                 },
             'handlers': {

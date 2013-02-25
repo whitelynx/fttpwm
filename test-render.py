@@ -225,7 +225,7 @@ def paint():
             #y = (row + 1) * 24 + row * 64
             conn.render.Composite(
                     curOp,
-                    grad, 0,    pict,  # src,        mask,         dst
+                    grad, 0, pict,     # src,        mask,         dst
                     x, y, 0, 0, x, y,  # srcX, srcY, maskX, maskY, dstX, dstY
                     64, 64             # width, height
                     )
@@ -248,9 +248,9 @@ def paintChecked():
     w, h, maxAscent = getTextSize(msg)
     cookies.append(conn.render.CompositeChecked(
             xcb.render.PictOp.Multiply,
-            grad2, 0, pict,                # src,        mask,         dst
+            grad2, 0, pict,                  # src,        mask,         dst
             0, 0, 0, 0, 0, 450 - maxAscent,  # srcX, srcY, maskX, maskY, dstX, dstY
-            w + 1000, h + 1000                   # width, height
+            w + 1000, h + 1000               # width, height
             ))
 
     for col in xrange(0, 7):
@@ -259,7 +259,7 @@ def paintChecked():
             y = (row + 1) * 24 + row * 64
             cookies.append(conn.render.CompositeChecked(
                     ops[0][0],
-                    grad, 0,    pict,  # src,        mask,         dst
+                    grad, 0, pict,     # src,        mask,         dst
                     x, y, 0, 0, x, y,  # srcX, srcY, maskX, maskY, dstX, dstY
                     64, 64             # width, height
                     ))

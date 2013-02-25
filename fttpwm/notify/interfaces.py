@@ -131,9 +131,9 @@ def test():
 
         @NotificationsInterface.CloseNotification
         def CloseNotification(self, id):
-            """Causes a notification to be forcefully closed and removed from the user's view. It can be used, for example,
-            in the event that what the notification pertains to is no longer relevant, or to cancel a notification with no
-            expiration time.
+            """Causes a notification to be forcefully closed and removed from the user's view. It can be used, for
+            example, in the event that what the notification pertains to is no longer relevant, or to cancel a
+            notification with no expiration time.
 
             """
 
@@ -207,7 +207,7 @@ def test():
             types.Int32(expireTimeout)
             )
 
-    # If more than one interface on the remote object defines the same method, we need to specify which interface to use:
+    # If more than one interface on the remote object defines the same method, we must specify which interface to use:
     #FIXME: This is currently broken!
     #notifications.notifications.Notify(appName, replacesID, appIcon, summary, body, actions, hints, expireTimeout)
 

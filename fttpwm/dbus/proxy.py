@@ -218,8 +218,12 @@ dbusMethod = BaseDecorator(_DBusMethod)
 dbusSignal = BaseDecorator(_DBusSignal)
 
 
-"""
-If a well-known bus name implies the presence of a "main" interface, that "main" interface is often given the same name as the well-known bus name, and situated at the corresponding object path. For instance, if the owner of example.com is developing a D-Bus API for a music player, they might define that any application that takes the well-known name com.example.MusicPlayer1 should have an object at the object path /com/example/MusicPlayer1 which implements the interface com.example.MusicPlayer1.
+"""If a well-known bus name implies the presence of a "main" interface, that "main" interface is often given the same
+name as the well-known bus name, and situated at the corresponding object path. For instance, if the owner of
+example.com is developing a D-Bus API for a music player, they might define that any application that takes the
+well-known name com.example.MusicPlayer1 should have an object at the object path /com/example/MusicPlayer1 which
+implements the interface com.example.MusicPlayer1.
+
 """
 
 
@@ -264,9 +268,13 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	STRING	Unique name assigned to the connection
-        Before an application is able to send messages to other applications it must send the org.freedesktop.DBus.Hello message to the message bus to obtain a unique name. If an application without a unique name tries to send a message to another application, or a message to the message bus itself that isn't the org.freedesktop.DBus.Hello message, it will be disconnected from the bus.
+        Before an application is able to send messages to other applications it must send the
+        org.freedesktop.DBus.Hello message to the message bus to obtain a unique name. If an application without a
+        unique name tries to send a message to another application, or a message to the message bus itself that isn't
+        the org.freedesktop.DBus.Hello message, it will be disconnected from the bus.
 
-        There is no corresponding "disconnect" request; if a client wishes to disconnect from the bus, it simply closes the socket (or other communication channel).
+        There is no corresponding "disconnect" request; if a client wishes to disconnect from the bus, it simply closes
+        the socket (or other communication channel).
 
         '''
 
@@ -328,7 +336,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
         0	STRING	Name with a new owner
         1	STRING	Old owner or empty string if none
         2	STRING	New owner or empty string if none
-        This signal indicates that the owner of a name has changed. It's also the signal to use to detect the appearance of new names on the bus.
+        This signal indicates that the owner of a name has changed. It's also the signal to use to detect the
+        appearance of new names on the bus.
 
         '''
 
@@ -375,7 +384,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	UINT32	Return value
-        Tries to launch the executable associated with a name. For more information, see the section called "Message Bus Starting Services".
+        Tries to launch the executable associated with a name. For more information, see the section called "Message
+        Bus Starting Services".
 
         The return value can be one of the following values:
 
@@ -395,11 +405,13 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	ARRAY of DICT<STRING,STRING>	Environment to add or update
-        Normally, session bus activated services inherit the environment of the bus daemon. This method adds to or modifies that environment when activating services.
+        Normally, session bus activated services inherit the environment of the bus daemon. This method adds to or
+        modifies that environment when activating services.
 
         Some bus instances, such as the standard system bus, may disable access to this method for some or all callers.
 
-        Note, both the environment variable names and values must be valid UTF-8. There's no way to update the activation environment with data that is invalid UTF-8.
+        Note, both the environment variable names and values must be valid UTF-8. There's no way to update the
+        activation environment with data that is invalid UTF-8.
 
         '''
 
@@ -417,7 +429,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	STRING	Return value, a unique connection name
-        Returns the unique connection name of the primary owner of the name given. If the requested name doesn't have an owner, returns a org.freedesktop.DBus.Error.NameHasNoOwner error.
+        Returns the unique connection name of the primary owner of the name given. If the requested name doesn't have
+        an owner, returns a org.freedesktop.DBus.Error.NameHasNoOwner error.
 
         '''
 
@@ -435,7 +448,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	UINT32	Unix user ID
-        Returns the Unix user ID of the process connected to the server. If unable to determine it (for instance, because the process is not on the same machine as the bus daemon), an error is returned.
+        Returns the Unix user ID of the process connected to the server. If unable to determine it (for instance,
+        because the process is not on the same machine as the bus daemon), an error is returned.
 
         '''
 
@@ -453,7 +467,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	UINT32	Unix process id
-        Returns the Unix process ID of the process connected to the server. If unable to determine it (for instance, because the process is not on the same machine as the bus daemon), an error is returned.
+        Returns the Unix process ID of the process connected to the server. If unable to determine it (for instance,
+        because the process is not on the same machine as the bus daemon), an error is returned.
 
         '''
 
@@ -467,7 +482,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	STRING	Match rule to add to the connection
-        Adds a match rule to match messages going through the message bus (see the section called "Match Rules"). If the bus does not have enough resources the org.freedesktop.DBus.Error.OOM error is returned.
+        Adds a match rule to match messages going through the message bus (see the section called "Match Rules"). If
+        the bus does not have enough resources the org.freedesktop.DBus.Error.OOM error is returned.
 
         '''
 
@@ -481,7 +497,8 @@ class BusInterface(DBusInterface('org.freedesktop.DBus')):
 
         Argument	Type	Description
         0	STRING	Match rule to remove from the connection
-        Removes the first rule that matches (see the section called "Match Rules"). If the rule is not found the org.freedesktop.DBus.Error.MatchRuleNotFound error is returned.
+        Removes the first rule that matches (see the section called "Match Rules"). If the rule is not found the
+        org.freedesktop.DBus.Error.MatchRuleNotFound error is returned.
 
         '''
 

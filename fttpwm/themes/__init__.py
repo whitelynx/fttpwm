@@ -15,11 +15,11 @@ logger = logging.getLogger("fttpwm.themes")
 class Color(object):
     stringFormats = [
             (lambda x: float(int(x, 16)) / 0xF,
-                re.compile(r'#(?P<r>[0-9a-fA-F])(?P<g>[0-9a-fA-F])(?P<b>[0-9a-fA-F])(?P<a>[0-9a-fA-F])?$')),
+                re.compile('#(?P<r>[0-9a-fA-F])(?P<g>[0-9a-fA-F])(?P<b>[0-9a-fA-F])(?P<a>[0-9a-fA-F])?$')),
             (lambda x: float(int(x, 16)) / 0xFF,
-                re.compile(r'#(?P<r>[0-9a-fA-F]{2})(?P<g>[0-9a-fA-F]{2})(?P<b>[0-9a-fA-F]{2})(?P<a>[0-9a-fA-F]{2})?$')),
+                re.compile('#(?P<r>[0-9a-fA-F]{2})(?P<g>[0-9a-fA-F]{2})(?P<b>[0-9a-fA-F]{2})(?P<a>[0-9a-fA-F]{2})?$')),
             (lambda x: float(int(x, 16)) / 0xFFFF,
-                re.compile(r'#(?P<r>[0-9a-fA-F]{4})(?P<g>[0-9a-fA-F]{4})(?P<b>[0-9a-fA-F]{4})(?P<a>[0-9a-fA-F]{4})?$')),
+                re.compile('#(?P<r>[0-9a-fA-F]{4})(?P<g>[0-9a-fA-F]{4})(?P<b>[0-9a-fA-F]{4})(?P<a>[0-9a-fA-F]{4})?$')),
             ]
 
     def __init__(self, string=None):

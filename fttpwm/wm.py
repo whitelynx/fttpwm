@@ -393,6 +393,14 @@ class WM(object):
 
         logger.debug("unmanageWindow: Unmanaging client window of %r...", frame)
 
+        if frame.focused:
+            try:
+                frame.onLostFocus()
+            except:
+                logger.exception("unmanageWindow: Error calling onLostFocus on %r.", frame)
+
+            self.lastFocusedWindow = None
+
         del self.windows[frame.clientWindowID]
         del self.frameWindows[frame.frameWindowID]
         self.workspaces.removeWindow(frame)

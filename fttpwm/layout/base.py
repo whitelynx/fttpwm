@@ -10,7 +10,7 @@ import math
 
 import xpybutil
 
-from ..utils import loggerFor
+from ..utils import between, loggerFor
 
 
 class BaseLayout(object):
@@ -80,11 +80,31 @@ class ListLayout(BaseLayout):
         """Move the frame forward or backward within its list of siblings by the given number of positions.
 
         """
-        currentIndex = frame.getLayoutInfo(self).get('index', float('inf'))
+        currentPos = frame.getLayoutInfo(self).get('index', float('inf'))
+        targetPos = currentPos + n
 
         frame.setLayoutInfo(self, {
-                'index': currentIndex + n + math.copysign(0.5, n)  # Add 0.5 to put it beyond the given sibling.
+                'index': targetPos
                 })
+
+        # Shift each sibling between the original and new positions by +1 or -1, to make room.
+        shiftSiblingsBy = -int(math.copysign(1, n))
+
+        self.logger.debug("Moving frame %r from position %r to %r; shifting siblings by %r.",
+                frame, currentPos, targetPos, shiftSiblingsBy)
+
+        for sibling in frame.workspace.viewableFrames:
+            if sibling != frame:
+                siblingPos = sibling.getLayoutInfo(self).get('index', float('inf'))
+
+                if between(siblingPos, currentPos, targetPos) or siblingPos == targetPos:
+                    self.logger.debug("Sibling frame %r (index %r) is in the range to be moved.", sibling, siblingPos)
+                    sibling.setLayoutInfo(self, {
+                            'index': siblingPos + shiftSiblingsBy
+                            })
+                else:
+                    self.logger.debug("Sibling frame %r (index %r) is not in the range to be moved.",
+                            sibling, siblingPos)
 
         # Now, rearrange the window's workspace. (will convert all indices back to consecutive integers)
         frame.workspace.arrangeWindows()

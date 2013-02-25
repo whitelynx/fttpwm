@@ -12,7 +12,7 @@ from xcb.xproto import Circulate, ConfigWindow, StackMode
 import xpybutil
 
 from ..mouse import combine, KeyOrButtonAction, MouseDragAction, WindowDragAction
-from ..utils import convertAttributes, signedToUnsigned16
+from ..utils.x import convertAttributes, signedToUnsigned16
 from .. import layout
 from .. import singletons
 

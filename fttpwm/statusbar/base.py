@@ -26,7 +26,8 @@ from ..mouse import bindMouse
 from ..signals import Signal
 from ..settings import settings
 from ..themes import Default, fonts
-from ..utils import convertAttributes, StrftimeFormatter
+from ..utils.x import convertAttributes
+from ..utils.time import StrftimeFormatter
 from .. import singletons
 
 

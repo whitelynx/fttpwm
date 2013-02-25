@@ -23,7 +23,7 @@ import xpybutil.window
 from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
 from .settings import settings
 from .setroot import setWallpaper
-from .utils import convertAttributes
+from .utils.x import convertAttributes
 from .xevents import SelectionNotifyEvent
 from .frame import WindowFrame
 from .signals import Signal

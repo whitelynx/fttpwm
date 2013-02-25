@@ -28,7 +28,7 @@ from .signals import Signal
 from .signaled import SignaledSet, SignaledDict
 from .settings import settings
 from .themes import Default, fonts
-from .utils import convertAttributes
+from .utils.x import convertAttributes
 from . import singletons
 
 

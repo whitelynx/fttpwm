@@ -19,7 +19,7 @@ import xpybutil.event
 import xpybutil.window
 
 from .settings import settings
-from .utils import findCurrentVisual
+from .utils.x import findCurrentVisual
 from .signals import Signal
 from . import singletons
 

@@ -18,7 +18,7 @@ from .settings import settings
 from .signals import Signal
 from .signaled import SignaledList, SignaledDict
 from .layout import Rows
-from .utils import HistoryStack
+from .utils.history import HistoryStack
 
 
 logger = logging.getLogger("fttpwm.workspace")

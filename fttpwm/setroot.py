@@ -16,7 +16,7 @@ import cairo
 
 from .settings import settings
 from .themes.wallpaper import SVG
-from .utils import convertAttributes, findCurrentVisual
+from .utils.x import convertAttributes, findCurrentVisual
 from . import resources
 
 

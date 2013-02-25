@@ -12,7 +12,7 @@ import warnings
 from weakref import WeakSet
 
 from .. import singletons
-from ..utils import listpl, naturalJoin
+from ..utils.humanize import listpl, naturalJoin
 
 from .interface import _BaseInterfaceMemberInfo
 from .utils import MethodWrapper

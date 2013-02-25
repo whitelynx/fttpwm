@@ -17,7 +17,7 @@ from xcb.xproto import ExposeEvent, MapNotifyEvent, PropertyNotifyEvent
 import cairo
 
 import fttpwm.themes.fonts as fonts
-from fttpwm.utils import findCurrentVisual
+from fttpwm.utils.x import findCurrentVisual
 
 
 logger = logging.getLogger("cairo_bench")

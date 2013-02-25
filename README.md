@@ -42,6 +42,34 @@ quite well as a testbed:
 	startx $(which python2) -m fttpwm -- $(which Xephyr) :1 -screen 1024x768
 
 
+Coding Style
+------------
+For the most part, we adhere to [PEP 8][]. There are a couple of differences from PEP 8, however:
+
+- **Maximum line length:** PEP 8 prescribes a limit of 79 characters. Given modern display resolutions (and the large
+  amount of wasted space resulting from a 79-character width), we instead use a line length limit of 119 characters.
+  This still allows me to fit two editors side-by-side on any of my screens, showing the full width of the code.
+- **Breaking long lines:** PEP 8 says, "The preferred place to break around a binary operator is after the operator,
+  not before it." We disagree; I find it easier to read line continuations when operators appear at the beginning of
+  continued lines, especially in the case of functions which take multiple arguments, since the leading operator helps
+  distinguish continued lines from new arguments.
+- **Indentation:** We agree with everything specifically laid out by the actual PEP 8 document here, but the [pep8][]
+  style checker app gives us a surprising number of errors dealing with indentation:
+    - _E123 closing bracket does not match indentation of opening bracket's line_
+    - _E124 closing bracket does not match visual indentation_
+    - _E126 continuation line over-indented for hanging indent_
+    - _E127 continuation line over-indented for visual indent_
+    - _E128 continuation line under-indented for visual indent_
+  We disagree.
+
+In order to check the FTTPWM code with the [pep8][] style checker app, we use the following command:
+
+    pep8-python2 --max-line-length=119 --ignore=E123,E124,E126,E127,E128 .
+
+[PEP 8]: http://www.python.org/dev/peps/pep-0008
+[pep8]: https://pypi.python.org/pypi/pep8
+
+
 License
 -------
 FTTPWM is released under the [MIT License][]. See the `LICENSE` file for details.

@@ -26,6 +26,9 @@ class BaseLayout(object):
     def arrange(self, workspace):
         pass
 
+    def onFocusChanged(self, prevFrame, curFrame):
+        pass
+
     @property
     def layoutInfoKey(self):
         cls = type(self)
@@ -47,8 +50,7 @@ class ListLayout(BaseLayout):
 
     """
     def arrange(self, ws):
-        frames = ws.viewableFrames
-        frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        frames = self.sortedFrames(ws)
         frameCount = len(frames)
 
         self.logger.debug("arrange: Arranging frames: %r", frames)
@@ -119,12 +121,6 @@ class ListLayout(BaseLayout):
         """Focus the frame `n` positions before (n < 0) or after (n > 0) the given one.
 
         """
-        try:
-            frames = frame.workspace.viewableFrames
-        except ReferenceError:
-            print frame
-            print frame.workspace
-            print frame.workspace.viewableFrames
-        frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        frames = self.sortedFrames(frame.workspace)
         siblingIdx = (frames.index(frame) + n) % len(frames)
         frames[siblingIdx].focus()

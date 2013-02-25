@@ -243,6 +243,8 @@ class Workspace(object):
 
     @focusedWindow.setter
     def focusedWindow(self, frame):
+        previous = self.focusedWindow
+
         if self.focusedWindow is not None:
             # Disconnect from the previous window's closed signal.
             self.focusedWindow.closed.disconnect(self.focusedWindowClosed)
@@ -262,6 +264,8 @@ class Workspace(object):
 
             # Add this window to the focus history.
             self.focusHistory.add(self.focusedWindow)
+
+        self.layout.onFocusChanged(previous, frame)
 
     def onFocusedWindowClosed(self):
         self.focusedWindow = None

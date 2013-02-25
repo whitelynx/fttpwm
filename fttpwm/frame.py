@@ -739,18 +739,16 @@ class WindowFrame(object):
 
         tabs = self.workspace.layout.tabs(self)
         if tabs:
-            tabSpacing, titlebarHeight = settings.theme.getFrameThemeValues(self, ('tabSpacing', 'titlebarHeight'))
+            tabSpacing, titlebarHeight = settings.theme.getFrameThemeValues(self, 'tabSpacing', 'titlebarHeight')
 
             tabWidth = (self.width - (tabSpacing * (len(tabs) - 1))) / len(tabs)
             tabX = 0
 
+            settings.theme.paintWindow(self.context, self)
             for tabbedFrame in tabs:
                 tabGeom = [tabX, 0, tabWidth, titlebarHeight]
 
-                if tabbedFrame == self:
-                    settings.theme.paintWindow(self.context, self, tabGeom)
-                else:
-                    settings.theme.paintTab(self.context, tabbedFrame, tabGeom)
+                settings.theme.paintTab(self.context, tabbedFrame, tabGeom)
 
                 tabX += tabWidth + tabSpacing
 

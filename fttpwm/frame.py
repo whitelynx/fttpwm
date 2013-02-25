@@ -8,6 +8,7 @@ from argparse import Namespace
 from collections import defaultdict
 import json
 import logging
+import time
 
 import xcb
 from xcb.xproto import Atom, CW, ConfigWindow, ConfigureNotifyEvent, PropMode, StackMode
@@ -77,6 +78,7 @@ class WindowFrame(object):
         self._workspace = None
         self._icccmState = icccm.State.Withdrawn
         self._icccmIconWindowID = xcb.NONE
+        self.addedToWorkspace = None  # When this frame was added to its workspace
 
         self.ewmhStates = SignaledSet()
         self.ewmhStates.updated.connect(self._updateEWMHState)
@@ -659,6 +661,7 @@ class WindowFrame(object):
         oldWorkspace = self._workspace
 
         self._workspace = workspace
+        self.addedToWorkspace = time.time()
 
         if oldWorkspace is not None:
             # Notify our old workspace that we've left. (we do this after changing self._workspace so the old one

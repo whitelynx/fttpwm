@@ -14,3 +14,10 @@ def loggerFor(cls):
         cls = type(cls)
 
     return logging.getLogger('{}.{}'.format(cls.__module__, cls.__name__))
+
+
+def between(value, lower, upper):
+    if lower > upper:
+        lower, upper = upper, lower
+
+    return lower < value < upper

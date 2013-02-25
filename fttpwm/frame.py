@@ -303,10 +303,7 @@ class WindowFrame(object):
             self.focus
 
     def onExpose(self, event):
-        # A count of 0 denotes the last Expose event in a series of contiguous Expose events; this check lets us
-        # collapse such series into a single call to paint() so we don't get extraneous redraws.
-        if event.count == 0:
-            singletons.eventloop.callWhenIdle(self.paint)
+        singletons.eventloop.callWhenIdle(self.paint)
 
     def onMapNotify(self, event):
         self.frameMapped = True

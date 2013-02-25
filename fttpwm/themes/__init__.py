@@ -5,6 +5,7 @@ Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from abc import ABCMeta, abstractmethod
 import logging
 import re
 
@@ -63,6 +64,11 @@ class Color(object):
 
 
 class BaseTheme(object):
+    """The base class for all themes; cannot be used directly.
+
+    """
+    __metaclass__ = ABCMeta
+
     strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
 
     def __init__(self):
@@ -120,6 +126,22 @@ class BaseTheme(object):
         ewmh.set_frame_extents(frame.clientWindowID, *self.getFrameSizes(frame))
         ewmh.set_wm_window_opacity(frame.frameWindowID, self.getFrameThemeValue(frame, 'opacity'))
 
+    @abstractmethod
+    def paintTab(self, ctx, frame, tabGeom=None):
+        pass
+
+    @abstractmethod
+    def paintWindow(self, ctx, frame, titleGeom=None):
+        pass
+
+    @abstractmethod
+    def paintStatusBarBackground(self, ctx, bar):
+        pass
+
+    @abstractmethod
+    def paintStatusBar(self, ctx, bar):
+        pass
+
 
 class Default(BaseTheme):
     normal = dict(
@@ -155,19 +177,24 @@ class Default(BaseTheme):
     def __init__(self):
         super(Default, self).__init__()
 
-    def paintWindow(self, ctx, frame):
+    def paintTab(self, ctx, frame, tabGeom=None):
         GFTV = lambda x: self.getFrameThemeValues(frame, *x.split())
         background, innerBackground, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = GFTV(
                 'background innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
                 )
 
-        ctx.rectangle(0, 0, frame.width, titlebarHeight)
+        if not tabGeom:
+            tabGeom = [0, 0, frame.width, titlebarHeight]
+
+        tabWidth, tabHeight = tabGeom[2:4]
+
+        ctx.rectangle(*tabGeom)
         ctx.clip()
 
         # Draw titlebar background
         background.set_matrix(cairo.Matrix(
-                xx=1 / float(frame.width),
-                yy=1 / float(titlebarHeight)
+                xx=1 / float(tabWidth),
+                yy=1 / float(tabHeight)
                 ))
         ctx.set_source(background)
         ctx.paint()
@@ -182,32 +209,32 @@ class Default(BaseTheme):
         ctx.set_matrix(self.strokeMatrix)
 
         # ...highlight
-        ctx.move_to(0, titlebarHeight - 1)
+        ctx.move_to(0, tabHeight - 1)
         ctx.line_to(0, 0)
-        ctx.line_to(frame.width - 1, 0)
+        ctx.line_to(tabWidth - 1, 0)
         ctx.set_source_rgba(1, 1, 1, 0.3)
         ctx.stroke()
 
         # ...shadow
-        ctx.move_to(frame.width, 1)
-        ctx.line_to(frame.width, titlebarHeight)
-        ctx.line_to(1, titlebarHeight)
+        ctx.move_to(tabWidth, 1)
+        ctx.line_to(tabWidth, tabHeight)
+        ctx.line_to(1, tabHeight)
         ctx.set_source_rgba(0, 0, 0, 0.3)
         ctx.stroke()
 
         # Draw inner bevel
         if innerBackground is not None:
             # ...highlight
-            ctx.move_to(frame.width - 18, 3)
-            ctx.line_to(frame.width - 18, titlebarHeight - 2)
-            ctx.line_to(19, titlebarHeight - 2)
+            ctx.move_to(tabWidth - 18, 3)
+            ctx.line_to(tabWidth - 18, tabHeight - 2)
+            ctx.line_to(19, tabHeight - 2)
             ctx.set_source_rgba(1, 1, 1, 0.3)
             ctx.stroke()
 
             # ...shadow
-            ctx.move_to(17, titlebarHeight - 3)
+            ctx.move_to(17, tabHeight - 3)
             ctx.line_to(17, 1)
-            ctx.line_to(frame.width - 18, 1)
+            ctx.line_to(tabWidth - 18, 1)
             ctx.set_source_rgba(0, 0, 0, 0.3)
             ctx.stroke()
 
@@ -218,8 +245,8 @@ class Default(BaseTheme):
             innerBGMatrix = cairo.Matrix()
             innerBGMatrix.translate(2 + 16, 2)
             innerBGMatrix.scale(
-                    frame.width - 4 - 32,
-                    titlebarHeight - 4,
+                    tabWidth - 4 - 32,
+                    tabHeight - 4,
                     )
             innerBGMatrix.invert()
 
@@ -228,7 +255,7 @@ class Default(BaseTheme):
 
         # Clip the remainder of the drawing to the title area.
         ctx.save()
-        ctx.rectangle(2 + 16, 2, frame.width - 4 - 32, titlebarHeight - 4)
+        ctx.rectangle(2 + 16, 2, tabWidth - 4 - 32, tabHeight - 4)
         ctx.clip()
 
         if innerBackground is not None:
@@ -245,15 +272,18 @@ class Default(BaseTheme):
 
         # Draw title text
         title = frame.title
-        width = frame.width
+        width = tabWidth
         xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
         ctx.move_to(
                 (width - textWidth) / 2 - xBearing,
-                (titlebarHeight - textHeight) / 2 - yBearing
+                (tabHeight - textHeight) / 2 - yBearing
                 )
         ctx.show_text(title)
 
         ctx.restore()
+
+    def paintWindow(self, ctx, frame, titleGeom=None):
+        self.paintTab(ctx, frame, titleGeom)
 
     def paintStatusBarBackground(self, ctx, bar):
         background = self.getThemeValue('background', statusBar=True)

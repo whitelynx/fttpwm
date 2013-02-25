@@ -155,6 +155,7 @@ class Default(BaseTheme):
             background=linearGradient(Direction.vertical, Color.rgb(.8, .7, .3), Color.rgb(.8, .5, .3)),
             innerBackground=None,
             opacity=.7,
+            tabSpacing=1,
             )
     focused = dict(
             textColor=Color.rgb(1, 1, 1),

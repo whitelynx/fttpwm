@@ -26,6 +26,11 @@ class BaseLayout(object):
     def arrange(self, workspace):
         pass
 
+    @property
+    def layoutInfoKey(self):
+        cls = type(self)
+        return '{}.{}'.format(cls.__name__, cls.__module__)
+
 
 class TilingLayout(BaseLayout):
     def __init__(self, padding=0):

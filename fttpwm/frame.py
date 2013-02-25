@@ -252,11 +252,11 @@ class WindowFrame(object):
         singletons.x.setProperty(self.clientWindowID, property, data, type, format, mode, data_len)
 
     def getLayoutInfo(self, layout):
-        layoutType = layout.__class__.__name__
+        layoutType = layout.layoutInfoKey
         return self.layoutInfo.get(layoutType, {})
 
     def setLayoutInfo(self, layout, data):
-        layoutType = layout.__class__.__name__
+        layoutType = layout.layoutInfoKey
         self.layoutInfo[layoutType] = data
 
     ## Frame events ####

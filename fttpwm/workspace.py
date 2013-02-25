@@ -2,36 +2,23 @@
 from __future__ import unicode_literals
 """FTTPWM: Main application
 
-Copyright (c) 2012 David H. Bronke
+Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
 import logging
-import os
-import struct
-import sys
-import time
 import weakref
 
 import xcb
-from xcb.xproto import Atom, CW, ConfigWindow, EventMask, InputFocus, PropMode, SetMode, StackMode, WindowClass
-from xcb.xproto import MappingNotifyEvent, MapRequestEvent
 
-import xpybutil
-import xpybutil.event
 import xpybutil.ewmh as ewmh
-from xpybutil.util import get_atom as atom
-import xpybutil.window
 
-from .ewmh import EWMHAction, EWMHWindowState, EWMHWindowType
-from .settings import settings
-from .utils import convertAttributes
-from .xevents import SelectionNotifyEvent
-from .frame import WindowFrame
-from .signals import Signal
-from .signaled import SignaledList, SignaledDict, SignaledOrderedDict
-from .layout import Rows
 from . import singletons
+from .settings import settings
+from .signals import Signal
+from .signaled import SignaledList, SignaledDict
+from .layout import Rows
+from .utils import HistoryStack
 
 
 logger = logging.getLogger("fttpwm.workspace")
@@ -222,7 +209,7 @@ class Workspace(object):
         self.windows = SignaledDict()
         self.windows.updated.connect(self.arrangeWindows)
         self._focusedWindow = None
-        self.focusHistory = weakref.WeakKeyDictionary()
+        self.focusHistory = HistoryStack()
 
         self.focusedWindowClosed = Signal()
         self.focusedWindowClosed.connect(self.onFocusedWindowClosed)
@@ -274,15 +261,45 @@ class Workspace(object):
             self.focusedWindow.closed.connect(self.focusedWindowClosed)
 
             # Add this window to the focus history.
-            self.focusHistory[self.focusedWindow] = time.time()
+            self.focusHistory.add(self.focusedWindow)
 
     def onFocusedWindowClosed(self):
         self.focusedWindow = None
 
+    @staticmethod
+    def sortByAddedTime(frame):
+        return frame.addedToWorkspace
+
     def focusMostRecent(self):
-        frame = sorted(self.focusHistory.iteritems(), key=lambda item: item[1])[0][0]
-        logger.info("Focusing most recently-focused window. (%r)", frame)
-        frame.focus()
+        frame = None
+        for focused in reversed(list(self.focusHistory)):
+            if focused.valid:
+                frame = focused
+                logger.debug("focusMostRecent: Focusing most recently-focused frame. (%r)", frame)
+                break
+
+            else:
+                logger.debug("focusMostRecent: Removing invalid frame %r from focus history.", focused)
+                self.focusHistory.discard(focused)
+
+        if not frame:
+            validFrames = self.validFrames
+            if validFrames:
+                logger.debug("focusMostRecent: No valid frames in focus history; focusing first frame on workspace.")
+
+                # Get the most recently-added valid frame on this workspace.
+                frame = (f for f in sorted(validFrames, key=self.sortByAddedTime)).next()
+
+            else:
+                logger.info("focusMostRecent: No valid frames on workspace.")
+                return
+
+        if frame:
+            logger.info("focusMostRecent: Focusing frame: %r", frame)
+            frame.focus()
+
+        else:
+            logger.warn("focusMostRecent: No valid windows found.")
 
     @property
     def visible(self):
@@ -301,14 +318,14 @@ class Workspace(object):
     def index(self, index):
         if self._index != index:
             if hasattr(self, 'logger'):
-                self.logger.debug("=> %s", index)
+                self.logger.debug("index: %r => %r", self._index, index)
 
             self._index = index
             self.logger = logging.getLogger("fttpwm.workspace.Workspace.{}(name:{})".format(index, self.name))
 
             # Update each window's _NET_WM_DESKTOP property.
-            for window in self.windows:
-                ewmh.set_wm_desktop(window, index)
+            for clientWindowID in self.windows:
+                ewmh.set_wm_desktop(clientWindowID, index)
 
             self.indexUpdated()
 
@@ -316,18 +333,31 @@ class Workspace(object):
         self.index = self.manager.workspaces.index(self)
 
     @property
-    def hasViewableFrames(self):
+    def validFrames(self):
+        valid = []
         for frame in self.windows.values():
-            if frame.viewable and frame.initialized:
-                return True
+            if not frame.valid:
+                logger.debug("validFrames: Removing invalid frame %r from window list.", frame)
+                self.windows.discard(frame)
 
-        return False
+            else:
+                valid.append(frame)
+
+        return valid
+
+    @property
+    def hasViewableFrames(self):
+        return any(
+                frame.viewable
+                for frame in self.validFrames
+                )
 
     @property
     def viewableFrames(self):
-        return [frame
-                for frame in self.windows.values()
-                if frame.viewable and frame.initialized
+        return [
+                frame
+                for frame in self.validFrames
+                if frame.viewable
                 ]
 
     @property

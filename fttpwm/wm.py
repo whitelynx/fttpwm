@@ -50,6 +50,7 @@ class WM(object):
         self.onStartup = Signal()
         self.timers = deque()
         self.whenQueueEmpty = set()
+        self.lastFocusedWindow = None
 
         assert singletons.wm is None
         singletons.wm = self
@@ -152,6 +153,7 @@ class WM(object):
         if frame is None and self.workspaces.current.focusedWindow is not None:
             logger.warn("Setting workspace %r's focused window to None! (used to be %r)",
                     self.workspaces.current, self.workspaces.current.focusedWindow)
+
         self.workspaces.current.focusedWindow = frame
 
         if frame is None:
@@ -166,7 +168,7 @@ class WM(object):
 
     @lastFocusedWindow.setter
     def lastFocusedWindow(self, frame):
-        if isinstance(frame, weakref.ReferenceType):
+        if frame is None or isinstance(frame, weakref.ReferenceType):
             self._lastFocusedWindow = frame
         else:
             self._lastFocusedWindow = weakref.ref(frame)

@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""FTTPWM: Themes
+
+Copyright (c) 2012-2013 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+"""
 import logging
 import re
 

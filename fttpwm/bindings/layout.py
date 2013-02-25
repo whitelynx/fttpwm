@@ -14,7 +14,8 @@ import xpybutil
 
 from ..mouse import combine, KeyOrButtonAction, MouseDragAction, WindowDragAction
 from ..utils.x import convertAttributes, signedToUnsigned16
-from .. import layout
+from ..layout.base import BaseLayout
+from ..layout.floating import Floating as FloatingLayout
 from .. import singletons
 
 
@@ -35,7 +36,7 @@ def _onlyFloating(action):
     if issubclass(ActionClass, MouseDragAction):
         class OnlyFloating(ActionClass):
             def onStartDrag(self, event):
-                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
+                if not isinstance(singletons.wm.workspaces.current.layout, FloatingLayout):
                     return self.CancelDrag
 
                 super(OnlyFloating, self).onStartDrag(event)
@@ -43,7 +44,7 @@ def _onlyFloating(action):
     elif issubclass(ActionClass, KeyOrButtonAction):
         class OnlyFloating(ActionClass):
             def onPress(self, event):
-                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
+                if not isinstance(singletons.wm.workspaces.current.layout, FloatingLayout):
                     self.releaseGrabAndReplay(event)
                     return
 
@@ -54,7 +55,7 @@ def _onlyFloating(action):
 
         class OnlyFloating(KeyOrButtonAction):
             def onPress(self, event):
-                if not isinstance(singletons.wm.workspaces.current.layout, layout.Floating):
+                if not isinstance(singletons.wm.workspaces.current.layout, FloatingLayout):
                     self.releaseGrabAndReplay(event)
                     return
 
@@ -165,7 +166,7 @@ class Floating(object):
 
 
 def setLayout(layoutInstance):
-    assert isinstance(layoutInstance, layout.BaseLayout)
+    assert isinstance(layoutInstance, BaseLayout)
 
     def setLayout_(*event):
         ws = singletons.wm.workspaces.current

@@ -1,7 +1,9 @@
 from os import chdir
 from os.path import expanduser
 
-from fttpwm.layout import Floating, TabbedMaximized, Columns, Rows
+from fttpwm.layout.floating import Floating
+from fttpwm.layout.simpletile import Columns, Rows
+from fttpwm.layout.tabbed import TabbedMaximized
 from fttpwm.themes import Default
 import fttpwm.themes.fonts as fonts
 import fttpwm.resources as resources

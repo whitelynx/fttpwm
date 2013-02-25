@@ -25,8 +25,9 @@ class Color(object):
     def __init__(self, string=None):
         self.r, self.g, self.b, self.a = 0, 0, 0, 1
 
-        matched = False
-        if string:
+        if string is not None:
+            matched = False
+
             for conv, fmt in self.stringFormats:
                 match = fmt.match(string)
                 if match:
@@ -35,8 +36,8 @@ class Color(object):
                     if match.group('a') is not None:
                         self.a = conv(match.group('a'))
 
-        if not matched:
-            logger.warn("Color: Couldn't parse color definition %r! Defaulting to opaque black.", string)
+            if not matched:
+                logger.warn("Color: Couldn't parse color definition %r! Defaulting to opaque black.", string)
 
     def __iter__(self):
         return iter((self.r, self.g, self.b, self.a))

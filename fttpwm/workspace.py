@@ -118,7 +118,7 @@ class WorkspaceManager(object):
         self.updateWorkAreaHint()
 
     def updateWorkAreaHint(self):
-        ewmh.set_workarea(ws.effectiveWorkArea for ws in self.workspaces)
+        ewmh.set_workarea(ws.innerGeometry for ws in self.workspaces)
 
     @property
     def globalWorkArea(self):
@@ -361,24 +361,24 @@ class Workspace(object):
                 ]
 
     @property
-    def effectiveWorkArea(self):
-        return {'x': self.effectiveWorkAreaX, 'y': self.effectiveWorkAreaY,
-                'width': self.effectiveWorkAreaWidth, 'height': self.effectiveWorkAreaHeight}
+    def innerGeometry(self):
+        return {'x': self.innerX, 'y': self.innerY,
+                'width': self.innerWidth, 'height': self.innerHeight}
 
     @property
-    def effectiveWorkAreaX(self):
+    def innerX(self):
         return self.manager.globalWorkAreaX + self.localStrutsLeft
 
     @property
-    def effectiveWorkAreaY(self):
+    def innerY(self):
         return self.manager.globalWorkAreaY + self.localStrutsTop
 
     @property
-    def effectiveWorkAreaWidth(self):
+    def innerWidth(self):
         return self.manager.globalWorkAreaWidth - self.localStrutsLeft - self.localStrutsRight
 
     @property
-    def effectiveWorkAreaHeight(self):
+    def innerHeight(self):
         return self.manager.globalWorkAreaHeight - self.localStrutsTop - self.localStrutsBottom
 
     def arrangeLocalDocks(self):

@@ -13,10 +13,10 @@ class TabbedMaximized(ListLayout, TilingLayout):
 
     """
     def startArrange(self, ws, frameCount):
-        self.frameX = ws.effectiveWorkAreaX + self.padding
-        self.frameY = ws.effectiveWorkAreaY + self.padding
-        self.frameWidth = ws.effectiveWorkAreaWidth - 2 * self.padding
-        self.frameHeight = ws.effectiveWorkAreaHeight - 2 * self.padding
+        self.frameX = ws.innerX + self.padding
+        self.frameY = ws.innerY + self.padding
+        self.frameWidth = ws.innerWidth - 2 * self.padding
+        self.frameHeight = ws.innerHeight - 2 * self.padding
 
         if ws.focusedWindow is not None:
             ws.focusedWindow.onShow()

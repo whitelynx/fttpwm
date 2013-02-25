@@ -13,10 +13,10 @@ class Columns(ListLayout, TilingLayout):
 
     """
     def startArrange(self, ws, frameCount):
-        self.firstFrameX = ws.effectiveWorkAreaX + self.padding
-        self.frameY = ws.effectiveWorkAreaY + self.padding
-        self.frameWidth = (ws.effectiveWorkAreaWidth - self.padding) / frameCount - self.padding
-        self.frameHeight = ws.effectiveWorkAreaHeight - 2 * self.padding
+        self.firstFrameX = ws.innerX + self.padding
+        self.frameY = ws.innerY + self.padding
+        self.frameWidth = (ws.innerWidth - self.padding) / frameCount - self.padding
+        self.frameHeight = ws.innerHeight - 2 * self.padding
         self.frameXIncrement = (self.frameWidth + self.padding)
 
     def framePosition(self, index, frame, ws, frameCount):
@@ -29,10 +29,10 @@ class Rows(ListLayout, TilingLayout):
 
     """
     def startArrange(self, ws, frameCount):
-        self.frameX = ws.effectiveWorkAreaX + self.padding
-        self.firstFrameY = ws.effectiveWorkAreaY + self.padding
-        self.frameWidth = ws.effectiveWorkAreaWidth - 2 * self.padding
-        self.frameHeight = (ws.effectiveWorkAreaHeight - self.padding) / frameCount - self.padding
+        self.frameX = ws.innerX + self.padding
+        self.firstFrameY = ws.innerY + self.padding
+        self.frameWidth = ws.innerWidth - 2 * self.padding
+        self.frameHeight = (ws.innerHeight - self.padding) / frameCount - self.padding
         self.frameYIncrement = (self.frameHeight + self.padding)
 
     def framePosition(self, index, frame, ws, frameCount):

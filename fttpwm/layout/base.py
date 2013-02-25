@@ -1,0 +1,99 @@
+# -*- coding: utf-8 -*-
+"""FTTPWM: Base window layout classes
+
+Copyright (c) 2012-2013 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+"""
+from abc import ABCMeta, abstractmethod
+import math
+
+import xpybutil
+
+from ..utils import loggerFor
+
+
+class BaseLayout(object):
+    """The base class for all layouts; cannot be used directly.
+
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        self.logger = loggerFor(self)
+
+    @abstractmethod
+    def arrange(self, workspace):
+        pass
+
+
+class TilingLayout(BaseLayout):
+    def __init__(self, padding=0):
+        self.padding = padding
+
+        super(TilingLayout, self).__init__()
+
+
+class ListLayout(BaseLayout):
+    """Base class for layouts which track all of their windows in a single sortable list.
+
+    """
+    def arrange(self, ws):
+        frames = ws.viewableFrames
+        frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        frameCount = len(frames)
+
+        self.logger.debug("arrange: Arranging frames: %r", frames)
+
+        self.startArrange(ws, frameCount)
+
+        for index, frame in enumerate(frames):
+            geometry = self.framePosition(index, frame, ws, frameCount)
+            self.logger.debug("Moving/resizing %r to %r.", frame, geometry)
+            frame.moveResize(*geometry, flush=False)
+
+            self.onFramePositioned(index, frame, ws, frameCount)
+
+            # Update all frame indices to be consecutive integers.
+            frame.setLayoutInfo(self, {'index': index})
+
+        xpybutil.conn.flush()
+
+    @abstractmethod
+    def startArrange(self, ws, frameCount):
+        pass
+
+    @abstractmethod
+    def framePosition(self, index, frame, ws, frameCount):
+        pass
+
+    def onFramePositioned(self, index, frame, ws, frameCount):
+        # By default, ensure all frames are visible
+        frame.onShow()
+
+    def moveFrame(self, frame, n):
+        """Move the frame forward or backward within its list of siblings by the given number of positions.
+
+        """
+        currentIndex = frame.getLayoutInfo(self).get('index', float('inf'))
+
+        frame.setLayoutInfo(self, {
+                'index': currentIndex + n + math.copysign(0.5, n)  # Add 0.5 to put it beyond the given sibling.
+                })
+
+        # Now, rearrange the window's workspace. (will convert all indices back to consecutive integers)
+        frame.workspace.arrangeWindows()
+
+    def focusSiblingFrame(self, frame, n):
+        """Focus the frame `n` positions before (n < 0) or after (n > 0) the given one.
+
+        """
+        try:
+            frames = frame.workspace.viewableFrames
+        except ReferenceError:
+            print frame
+            print frame.workspace
+            print frame.workspace.viewableFrames
+        frames.sort(key=lambda f: f.getLayoutInfo(self).get('index', float('inf')))
+        siblingIdx = (frames.index(frame) + n) % len(frames)
+        frames[siblingIdx].focus()

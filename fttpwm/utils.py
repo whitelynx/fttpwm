@@ -2,15 +2,18 @@
 from __future__ import unicode_literals
 """FTTPWM: Utility functions
 
-Copyright (c) 2012 David H. Bronke
+Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+import collections
 import datetime
 import logging
 import re
 import string
 import struct
+
+from .orderedsets import OrderedWeakSet
 
 
 logger = logging.getLogger("fttpwm.utils")
@@ -177,3 +180,28 @@ class StrftimeFormatter(string.Formatter):
             return kwargs.get('now_no_ms', self.now_no_ms)
 
         return super(StrftimeFormatter, self).get_value(key, args, kwargs)
+
+
+class HistoryStack(OrderedWeakSet, collections.Sequence):
+    """An ordered weakref set which moves items to the end of the set each time they're added, even if already
+    contained.
+
+    """
+    def add(self, value):
+        self.discard(value)
+        super(HistoryStack, self).add(value)
+
+    def __iter__(self):
+        return reversed(list(super(HistoryStack, self).__iter__()))
+
+    def __getitem__(self, idx):
+        it = iter(self)
+        item = None
+
+        for idx in range(idx):
+            try:
+                item = it.next()
+            except StopIteration:
+                raise IndexError("HistoryStack index out of range", idx)
+
+        return item

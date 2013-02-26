@@ -3,7 +3,7 @@ import logging
 import cairo
 
 
-logger = logging.getLogger("fttpwm.themes.gradients")
+logger = logging.getLogger("fttpwm.paint.gradients")
 
 
 class Direction(object):

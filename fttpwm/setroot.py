@@ -15,7 +15,7 @@ from xcb.xproto import Atom, CW, CloseDown, Kill, PropMode
 import cairo
 
 from .settings import settings
-from .themes.wallpaper import SVG
+from .paint.wallpaper import SVG
 from .utils.x import convertAttributes, findCurrentVisual
 from . import resources
 

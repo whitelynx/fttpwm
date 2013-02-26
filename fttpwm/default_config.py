@@ -4,10 +4,10 @@ from os.path import expanduser
 from fttpwm.layout.floating import Floating
 from fttpwm.layout.simpletile import Columns, Rows
 from fttpwm.layout.tabbed import TabbedMaximized
-from fttpwm.themes import Default
-import fttpwm.themes.fonts as fonts
+from fttpwm.themes.default import Default
+import fttpwm.paint.fonts as fonts
 import fttpwm.resources as resources
-from fttpwm.themes.wallpaper import SVG
+from fttpwm.paint.wallpaper import SVG
 from fttpwm.bindings.app import startSingle, startParallel
 from fttpwm.bindings.layout import Floating as FloatingBindings, setLayout, _RaiseWindow
 from fttpwm.bindings.layout import moveNext, movePrevious, focusNext, focusPrevious

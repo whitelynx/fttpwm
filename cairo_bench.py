@@ -16,7 +16,7 @@ from xcb.xproto import ExposeEvent, MapNotifyEvent, PropertyNotifyEvent
 
 import cairo
 
-import fttpwm.themes.fonts as fonts
+import fttpwm.paint.fonts as fonts
 from fttpwm.utils.x import findCurrentVisual
 
 

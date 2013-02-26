@@ -7,7 +7,7 @@ import cairo
 from ..enum import Enum
 
 
-logger = logging.getLogger("fttpwm.themes.wallpaper")
+logger = logging.getLogger("fttpwm.paint.wallpaper")
 
 
 class ScaleMode(object):

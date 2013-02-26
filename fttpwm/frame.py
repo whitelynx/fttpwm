@@ -25,7 +25,8 @@ from .ewmh import EWMHAction, EWMHWindowState
 from .signals import Signal
 from .signaled import SignaledSet, SignaledDict
 from .settings import settings
-from .themes import Default, fonts
+from .themes.default import Default
+from .paint import fonts
 from .utils.x import convertAttributes
 from . import singletons
 

@@ -240,6 +240,8 @@ class Window(object):
         self.fontOptions = cairo.FontOptions()
         self.fontOptions.set_hint_metrics(cairo.HINT_METRICS_ON)
 
+        self.font = cairo.ToyFontFace("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+
         # Show window.
         cookies.append(self.app.core.MapWindowChecked(self.windowID))
 
@@ -267,10 +269,10 @@ class Window(object):
         self.context.paint()
 
         self.context.set_source_rgb(0.0, 0.0, 0.0)
-        self.context.select_font_face("drift", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        self.context.set_font_face(self.font)
         self.context.set_font_options(self.fontOptions)
 
-        userFontEmSize, _ = self.context.device_to_user_distance(5, 0)
+        userFontEmSize, _ = self.context.device_to_user_distance(10, 0)
         self.context.set_font_size(userFontEmSize)
 
         x_bearing, y_bearing, width, height = self.context.text_extents(self.title)[:4]

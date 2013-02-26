@@ -5,6 +5,7 @@ Copyright (c) 2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from functools import wraps
 
 
 class Vector(object):
@@ -29,6 +30,17 @@ class Vector(object):
 
     def __rsub__(self, other):
         return Vector(*(o - s for s, o in zip(self, other)))
+
+
+def _defaultYToX(wrapped):
+    @wraps(wrapped)
+    def wrapper(self, x, y=None):
+        if y is None:
+            y = x
+
+        return wrapped(self, x, y)
+
+    return wrapper
 
 
 class Rect(object):
@@ -74,17 +86,27 @@ class Rect(object):
     def size(self):
         return Vector(self.width, self.height)
 
+    @_defaultYToX
     def grow(self, growX, growY=None):
-        if growY is None:
-            growY = growX
-
         return Rect(
-                self.x - growX / 2, self.y - growY / 2,
+                self.x, self.y,
                 self.width + growX, self.height + growY
                 )
 
+    @_defaultYToX
     def shrink(self, shrinkX, shrinkY=None):
-        if shrinkY is None:
-            shrinkY = shrinkX
-
         return self.grow(-shrinkX, -shrinkY)
+
+    @_defaultYToX
+    def growCentered(self, growX, growY=None):
+        return self.grow(growX, growY).move(-growX / 2, -growY / 2)
+
+    @_defaultYToX
+    def shrinkCentered(self, shrinkX, shrinkY=None):
+        return self.grow(-shrinkX, -shrinkY).move(shrinkX / 2, shrinkY / 2)
+
+    def move(self, moveByX, moveByY):
+        return Rect(
+                self.x + moveByX, self.y + moveByY,
+                self.width, self.height
+                )

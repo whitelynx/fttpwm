@@ -71,11 +71,11 @@ class Default(BaseTheme):
         drawBevel(ctx, tabGeom)
 
         with pushContext(ctx):
-            innerGeom = tabGeom.shrink(36, 4)
+            innerGeom = tabGeom.shrinkCentered(36, 4)
 
             if innerBackground is not None:
                 # Draw inner bevel
-                drawBevel(ctx, innerGeom.grow(1, 1), sunken=True)
+                drawBevel(ctx, innerGeom.growCentered(1, 1), sunken=True)
 
                 # Draw title (inner) background
                 drawFill(ctx, innerGeom, innerBackground)

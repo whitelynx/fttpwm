@@ -89,10 +89,10 @@ class WindowFrame(object):
         self.addedToWorkspace = None  # When this frame was added to its workspace
 
         self.ewmhStates = SignaledSet()
-        self.ewmhStates.updated.connect(self._updateEWMHState)
+        self.ewmhStates.updated.connect(lambda: singletons.eventloop.callWhenIdle(self._updateEWMHState))
 
         self.layoutInfo = SignaledDict()
-        self.layoutInfo.updated.connect(self._updateLayoutInfo)
+        self.layoutInfo.updated.connect(lambda: singletons.eventloop.callWhenIdle(self._updateLayoutInfo))
 
         self.subscribeToClientEvents()
 
@@ -310,12 +310,10 @@ class WindowFrame(object):
         singletons.x.setProperty(self.clientWindowID, property, data, type, format, mode, data_len)
 
     def getLayoutInfo(self, layout):
-        layoutType = layout.layoutInfoKey
-        return self.layoutInfo.get(layoutType, {})
+        return self.layoutInfo.get(layout.layoutInfoKey, {})
 
     def setLayoutInfo(self, layout, data):
-        layoutType = layout.layoutInfoKey
-        self.layoutInfo[layoutType] = data
+        self.layoutInfo[layout.layoutInfoKey] = data
 
     ## Frame events ####
     def onConfigureNotify(self, event):
@@ -507,8 +505,9 @@ class WindowFrame(object):
         #}
         #TODO: Respect more of the above hints!
 
-        #TODO: Honor the initial value of _NET_WM_STATE! (ewmh.get_wm_state)
+        #TODO: Honor the initial value of _NET_WM_STATE (ewmh.get_wm_state), suppressing _updateEWMHState!
         #TODO: Honor the initial value of _NET_WM_DESKTOP! (ewmh.get_wm_desktop)
+        #TODO: Copy _FTTPWM_LAYOUT_INFO into self.layoutInfo, suppressing _updateLayoutInfo!
 
         # Default to showing the window normally.
         initialState = icccm.State.Normal
@@ -764,7 +763,7 @@ class WindowFrame(object):
             return
 
         self._icccmState = state
-        self._updateICCCMState()
+        singletons.eventloop.callWhenIdle(self._updateICCCMState)
 
     @property
     def icccmIconWindowID(self):
@@ -776,24 +775,21 @@ class WindowFrame(object):
             return
 
         self._icccmIconWindowID = window
-        self._updateICCCMState()
+        singletons.eventloop.callWhenIdle(self._updateICCCMState)
 
     ## Update Methods ####
     def _updateICCCMState(self):
-        #TODO: Defer updates, so we only set WM_STATE once per event loop, even if both state and icon are updated
         if self.clientWindowID is not None:
             self.logger.trace("_updateICCCMState: Setting WM_STATE: state=%r, icon=%r",
                     self.icccmState, self.icccmIconWindowID)
             icccm.set_wm_state(self.clientWindowID, self.icccmState, self.icccmIconWindowID)
 
     def _updateEWMHState(self):
-        #TODO: Defer updates, so we only set _NET_WM_STATE once per event loop, even if multiple changes are made
         if self.clientWindowID is not None:
             self.logger.trace("_updateEWMHState: Setting _NET_WM_STATE: %r", self.ewmhStates)
             ewmh.set_wm_state(self.clientWindowID, self.ewmhStates)
 
     def _updateLayoutInfo(self):
-        #TODO: Defer updates, so we only set _FTTPWM_LAYOUT_INFO once per event loop, even if multiple changes are made
         #TODO: This should probably done through the X Session Management Protocol instead of using properties.
         if self.clientWindowID is not None:
             self.logger.trace("_updateLayoutInfo: Setting _FTTPWM_LAYOUT_INFO: %r", json.dumps(self.layoutInfo))

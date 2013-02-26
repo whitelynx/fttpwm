@@ -21,6 +21,7 @@ class BaseLayout(object):
 
     def __init__(self):
         self.logger = loggerFor(self)
+        self.parentInfoKey = ''
 
     @abstractmethod
     def arrange(self, workspace):
@@ -32,7 +33,7 @@ class BaseLayout(object):
     @property
     def layoutInfoKey(self):
         cls = type(self)
-        return '{}.{}'.format(cls.__name__, cls.__module__)
+        return '{}/{}.{}'.format(self.parentInfoKey, cls.__name__, cls.__module__)
 
     def tabs(self, frame):
         return None

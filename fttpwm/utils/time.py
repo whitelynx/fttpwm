@@ -34,6 +34,7 @@ class StrftimeFormatter(string.Formatter):
     strftimeRE = re.compile(r'%[aAbBcdfHIjmMpSUwWxXyYzZ]')
 
     def __init__(self):
+        #TODO: Should 'now' be retrieved elsewhere so we can reuse the same StrftimeFormatter at different times?
         self.now = datetime.datetime.now()
         self.now_no_ms = self.now.replace(microsecond=0)
         return super(StrftimeFormatter, self).__init__()

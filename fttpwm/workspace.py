@@ -186,11 +186,11 @@ class WorkspaceManager(object):
 
     @property
     def namesBeforeCurrent(self):
-        return '  '.join(ws.name for ws in self.beforeCurrent)
+        return [ws.name for ws in self.beforeCurrent]
 
     @property
     def namesAfterCurrent(self):
-        return '  '.join(ws.name for ws in self.afterCurrent)
+        return [ws.name for ws in self.afterCurrent]
 
     def switchTo(self, workspace):
         if isinstance(workspace, basestring):

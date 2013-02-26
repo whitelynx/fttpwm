@@ -4,6 +4,7 @@ Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """
+from collections import Mapping
 from datetime import timedelta
 import logging
 
@@ -27,19 +28,69 @@ settings.setDefaults(
         statusBarContents=[
             'FTTPWM',
             ],
-        statusBarLeftFormat=lambda:
-            u'{wbcs}{workspacesBeforeCurrent} <{currentWorkspace}> {workspacesAfterCurrent}{wacs}'.format(
-                currentWorkspace=singletons.wm.workspaces.current.name,
-                workspacesBeforeCurrent=singletons.wm.workspaces.namesBeforeCurrent,
-                wbcs=u'  ' if singletons.wm.workspaces.namesBeforeCurrent else u'',  # Spacing for if we're on WS 1
-                workspacesAfterCurrent=singletons.wm.workspaces.namesAfterCurrent,
-                wacs=u'  ' if singletons.wm.workspaces.namesAfterCurrent else u'',  # Spacing for if we're on the last
-                ),
+        statusBarLeftFormat=u'{wbcs}{workspacesBeforeCurrent} <{currentWorkspace}> {workspacesAfterCurrent}{wacs}',
         statusBarRightFormat='{isodatetime} ',
         #statusBarCenterFormat='FTTPWM',
         statusBarCenterFormat='',
         statusBarTitle='**statusbar**',
         )
+
+
+class StatusBarFormatter(Mapping):
+    def format(self, fmt):
+        if callable(fmt):
+            return fmt()
+
+        else:
+            # Create a new StrftimeFormatter so it gets `now` again.
+            self.formatter = StrftimeFormatter()
+
+            return self.formatter.vformat(fmt, [], self)
+
+    @property
+    def isodate(self):
+        return self.formatter.now.date().isoformat()
+
+    @property
+    def isotime(self):
+        return self.formatter.now.time().replace(microsecond=0).isoformat()
+
+    @property
+    def isodatetime(self):
+        return self.formatter.now.replace(microsecond=0).isoformat(' ')
+
+    @property
+    def workspaces(self):
+        return singletons.wm.workspaces
+
+    @property
+    def currentWorkspace(self):
+        return singletons.wm.workspaces.current.name
+
+    @property
+    def workspacesBeforeCurrent(self):
+        return singletons.wm.workspaces.namesBeforeCurrent
+
+    @property
+    def wbcs(self):
+        return u'  ' if singletons.wm.workspaces.namesBeforeCurrent else u''  # Space if we're not on WS 1
+
+    @property
+    def workspacesAfterCurrent(self):
+        return singletons.wm.workspaces.namesAfterCurrent
+
+    @property
+    def wacs(self):
+        return u'  ' if singletons.wm.workspaces.namesAfterCurrent else u''  # Space if we're not on the last WS
+
+    def __len__(self):
+        return len(self.__dict__)
+
+    def __iter__(self):
+        return iter(self.__dict__)
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 class StatusBar(object):
@@ -57,6 +108,8 @@ class StatusBar(object):
 
         self.width, self.height = singletons.x.screenWidth, settings.theme.statusBar['height']
         self.x, self.y = 0, singletons.x.screenHeight - self.height
+
+        self.formatter = StatusBarFormatter()
 
         # Create status bar window.
         self.windowAttributes = {
@@ -179,24 +232,9 @@ class StatusBar(object):
         if self.backPixmapID is None:
             self.paintBackground()
 
-        formatter = StrftimeFormatter()
-        now = formatter.now
-        kwargs = {
-                'isodate': now.date().isoformat(),
-                'isotime': now.time().replace(microsecond=0).isoformat(),
-                'isodatetime': now.replace(microsecond=0).isoformat(' '),
-                'workspaces': singletons.wm.workspaces,
-                }
-
-        def doText(fmt):
-            if callable(fmt):
-                return fmt()
-            else:
-                return formatter.format(fmt, **kwargs)
-
-        self.leftText = doText(settings.statusBarLeftFormat)
-        self.rightText = doText(settings.statusBarRightFormat)
-        self.centerText = doText(settings.statusBarCenterFormat)
+        self.leftText = self.formatter.format(settings.statusBarLeftFormat)
+        self.rightText = self.formatter.format(settings.statusBarRightFormat)
+        self.centerText = self.formatter.format(settings.statusBarCenterFormat)
 
         self.context.set_source(self.bgPattern)
         self.context.paint()

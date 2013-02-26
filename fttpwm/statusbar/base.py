@@ -37,6 +37,7 @@ class BaseWidget(object):
     def statusBar(self, statusBar):
         self._statusBar = statusBar
 
+        self.context = None
         if self.surface is not None:
             self.surface.finish()
 

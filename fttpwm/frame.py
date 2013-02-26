@@ -27,6 +27,7 @@ from .signaled import SignaledSet, SignaledDict
 from .settings import settings
 from .themes.default import Default
 from .paint import fonts
+from .paint.context import pushContext
 from .utils.x import convertAttributes
 from . import singletons
 
@@ -819,19 +820,20 @@ class WindowFrame(object):
             # Draw the window border and our tab.
             ourIndex = tabs.index(self)
             ourTabGeom = [tabWidth * ourIndex, 0, tabWidth, titlebarHeight]
-            settings.theme.paintWindow(self.context, self, ourTabGeom)
+
+            with pushContext(self.context):
+                settings.theme.paintWindow(self.context, self, ourTabGeom)
 
             # Draw other tabs.
             for tabbedFrame in tabs:
-                if tabbedFrame is self:
-                    # We already painted the tab for this frame; skip it.
-                    continue
+                # We already painted the tab for this frame; skip it.
+                if tabbedFrame is not self:
+                    tabGeom = [tabX, 0, tabWidth, titlebarHeight]
+                    self.logger.debug("paint: painting tab for %sframe %r at %r",
+                            'focused ' if tabbedFrame.focused else '', tabbedFrame, tabGeom)
 
-                tabGeom = [tabX, 0, tabWidth, titlebarHeight]
-                self.logger.debug("paint: painting tab for %sframe %r at %r",
-                        'focused ' if tabbedFrame.focused else '', tabbedFrame, tabGeom)
-
-                settings.theme.paintTab(self.context, tabbedFrame, tabGeom)
+                    with pushContext(self.context):
+                        settings.theme.paintTab(self.context, tabbedFrame, tabGeom)
 
                 tabX += tabWidth + tabSpacing
 

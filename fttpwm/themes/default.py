@@ -9,6 +9,7 @@ import cairo
 
 from ..paint import fonts
 from ..paint.color import Color
+from ..paint.context import pushContext
 from ..paint.gradients import linearGradient, Direction
 
 from . import BaseTheme
@@ -77,82 +78,78 @@ class Default(BaseTheme):
         ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
 
         # Line up the context so drawing at integral coordinates is aligned with pixels.
-        ctx.save()
-        ctx.set_matrix(self.strokeMatrix)
+        with pushContext(ctx):
+            ctx.set_matrix(self.strokeMatrix)
 
-        # ...highlight
-        ctx.move_to(0, tabHeight - 1)
-        ctx.line_to(0, 0)
-        ctx.line_to(tabWidth - 1, 0)
-        ctx.set_source_rgba(1, 1, 1, 0.3)
-        ctx.stroke()
-
-        # ...shadow
-        ctx.move_to(tabWidth, 1)
-        ctx.line_to(tabWidth, tabHeight)
-        ctx.line_to(1, tabHeight)
-        ctx.set_source_rgba(0, 0, 0, 0.3)
-        ctx.stroke()
-
-        # Draw inner bevel
-        if innerBackground is not None:
             # ...highlight
-            ctx.move_to(tabWidth - 18, 3)
-            ctx.line_to(tabWidth - 18, tabHeight - 2)
-            ctx.line_to(19, tabHeight - 2)
+            ctx.move_to(0, tabHeight - 1)
+            ctx.line_to(0, 0)
+            ctx.line_to(tabWidth - 1, 0)
             ctx.set_source_rgba(1, 1, 1, 0.3)
             ctx.stroke()
 
             # ...shadow
-            ctx.move_to(17, tabHeight - 3)
-            ctx.line_to(17, 1)
-            ctx.line_to(tabWidth - 18, 1)
+            ctx.move_to(tabWidth, 1)
+            ctx.line_to(tabWidth, tabHeight)
+            ctx.line_to(1, tabHeight)
             ctx.set_source_rgba(0, 0, 0, 0.3)
             ctx.stroke()
 
-            ctx.restore()
-            ctx.save()
+            # Draw inner bevel
+            if innerBackground is not None:
+                # ...highlight
+                ctx.move_to(tabWidth - 18, 3)
+                ctx.line_to(tabWidth - 18, tabHeight - 2)
+                ctx.line_to(19, tabHeight - 2)
+                ctx.set_source_rgba(1, 1, 1, 0.3)
+                ctx.stroke()
 
-            # Draw title (inner) background
-            innerBGMatrix = cairo.Matrix()
-            innerBGMatrix.translate(2 + 16, 2)
-            innerBGMatrix.scale(
-                    tabWidth - 4 - 32,
-                    tabHeight - 4,
+                # ...shadow
+                ctx.move_to(17, tabHeight - 3)
+                ctx.line_to(17, 1)
+                ctx.line_to(tabWidth - 18, 1)
+                ctx.set_source_rgba(0, 0, 0, 0.3)
+                ctx.stroke()
+
+                ctx.restore()
+                ctx.save()
+
+                # Draw title (inner) background
+                innerBGMatrix = cairo.Matrix()
+                innerBGMatrix.translate(2 + 16, 2)
+                innerBGMatrix.scale(
+                        tabWidth - 4 - 32,
+                        tabHeight - 4,
+                        )
+                innerBGMatrix.invert()
+
+                innerBackground.set_matrix(innerBGMatrix)
+                ctx.set_source(innerBackground)
+
+            with pushContext(ctx):
+                # Clip the remainder of the background drawing to the title area.
+                ctx.rectangle(2 + 16, 2, tabWidth - 4 - 32, tabHeight - 4)
+                ctx.clip()
+
+                if innerBackground is not None:
+                    # Finish painting the inner background.
+                    ctx.paint()
+
+            # Set up title text drawing
+            ctx.set_source_rgba(*textColor)
+            ctx.select_font_face(fontFace, fontSlant, fontWeight)
+            ctx.set_font_options(fonts.options.fontOptions)
+            ctx.set_font_size(fontSize)
+
+            # Draw title text
+            title = frame.title
+            width = tabWidth
+            xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
+            ctx.move_to(
+                    (width - textWidth) / 2 - xBearing,
+                    (tabHeight - textHeight) / 2 - yBearing
                     )
-            innerBGMatrix.invert()
-
-            innerBackground.set_matrix(innerBGMatrix)
-            ctx.set_source(innerBackground)
-
-        # Clip the remainder of the drawing to the title area.
-        ctx.save()
-        ctx.rectangle(2 + 16, 2, tabWidth - 4 - 32, tabHeight - 4)
-        ctx.clip()
-
-        if innerBackground is not None:
-            # Finish painting the inner background.
-            ctx.paint()
-
-        ctx.restore()
-
-        # Set up title text drawing
-        ctx.set_source_rgba(*textColor)
-        ctx.select_font_face(fontFace, fontSlant, fontWeight)
-        ctx.set_font_options(fonts.options.fontOptions)
-        ctx.set_font_size(fontSize)
-
-        # Draw title text
-        title = frame.title
-        width = tabWidth
-        xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
-        ctx.move_to(
-                (width - textWidth) / 2 - xBearing,
-                (tabHeight - textHeight) / 2 - yBearing
-                )
-        ctx.show_text(title)
-
-        ctx.restore()
+            ctx.show_text(title)
 
     def paintWindow(self, ctx, frame, titleGeom=None):
         self.paintTab(ctx, frame, titleGeom)

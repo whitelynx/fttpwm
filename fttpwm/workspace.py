@@ -7,11 +7,13 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 import logging
+import json
 import weakref
 
 import xcb
 
 import xpybutil.ewmh as ewmh
+from xpybutil.util import get_atom as atom
 
 from . import singletons
 from .settings import settings
@@ -334,7 +336,22 @@ class Workspace(object):
             self.indexUpdated()
 
     def updateIndex(self):
+        gotLayoutInfo = False
+        try:
+            singletons.x.conn.core.DeleteProperty(singletons.x.root, self.layoutInfoAtom)
+            self._queryLayoutInfo()
+
+            gotLayoutInfo = True
+        except AttributeError:
+            pass
+
         self.index = self.manager.workspaces.index(self)
+
+        self.layoutInfoProp = '_FTTPWM_WORKSPACE_{}_LAYOUT_INFO'.format(self.index)
+        self.layoutInfoAtom = atom(self.layoutInfoProp)
+
+        if not gotLayoutInfo:
+            self._queryLayoutInfo()
 
     @property
     def validFrames(self):
@@ -384,6 +401,31 @@ class Workspace(object):
     @property
     def innerHeight(self):
         return self.manager.globalWorkAreaHeight - self.localStrutsTop - self.localStrutsBottom
+
+    def getLayoutInfo(self, layout):
+        return self.layoutInfo.get(layout.layoutInfoKey, {})
+
+    def setLayoutInfo(self, layout, data):
+        self.layoutInfo[layout.layoutInfoKey] = data
+
+    def _queryLayoutInfo(self):
+        """Query this workspace's layout info from the root window's properties.
+
+        """
+        singletons.x.getProperty(singletons.x.root, self.layoutInfoAtom, delete=True, cb=self._setLayoutInfo)
+
+    def _setLayoutInfo(self, value, error):
+        value = json.loads(value) if value else {}
+
+        self.layoutInfo = SignaledDict(value)
+        self.layoutInfo.updated.connect(lambda: singletons.eventloop.callWhenIdle(self._updateLayoutInfo))
+
+    def _updateLayoutInfo(self):
+        #TODO: This should probably done through the X Session Management Protocol instead of using properties.
+        if self.clientWindowID is not None:
+            self.logger.trace("_updateLayoutInfo: Setting %r: %r", self.layoutInfoProp, json.dumps(self.layoutInfo))
+
+            singletons.x.setProperty(singletons.x.root, self.layoutInfoAtom, json.dumps(self.layoutInfo))
 
     def arrangeLocalDocks(self):
         #TODO: Rearrange any local (workspace-specific) dock windows as needed!

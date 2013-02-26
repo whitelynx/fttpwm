@@ -819,7 +819,7 @@ class WindowFrame(object):
 
             # Draw the window border and our tab.
             ourIndex = tabs.index(self)
-            ourTabGeom = [tabWidth * ourIndex, 0, tabWidth, titlebarHeight]
+            ourTabGeom = [(tabWidth + tabSpacing) * ourIndex, 0, tabWidth, titlebarHeight]
 
             with pushContext(self.context):
                 settings.theme.paintWindow(self.context, self, ourTabGeom)

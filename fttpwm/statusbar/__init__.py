@@ -69,7 +69,7 @@ class StatusBarFormatter(Mapping):
 
     @property
     def workspacesBeforeCurrent(self):
-        return singletons.wm.workspaces.namesBeforeCurrent
+        return u'  '.join(singletons.wm.workspaces.namesBeforeCurrent)
 
     @property
     def wbcs(self):
@@ -77,7 +77,7 @@ class StatusBarFormatter(Mapping):
 
     @property
     def workspacesAfterCurrent(self):
-        return singletons.wm.workspaces.namesAfterCurrent
+        return u'  '.join(singletons.wm.workspaces.namesAfterCurrent)
 
     @property
     def wacs(self):

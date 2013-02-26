@@ -28,6 +28,7 @@ from .settings import settings
 from .themes.default import Default
 from .paint import fonts
 from .paint.context import pushContext
+from .utils.geometry import Rect
 from .utils.x import convertAttributes
 from . import singletons
 
@@ -459,8 +460,7 @@ class WindowFrame(object):
         cookies.setTitle = ewmh.set_wm_name_checked(self.frameWindowID, self.title)
 
         # Reparent client window to frame.
-        clientX, clientY = settings.theme.getClientGeometry(self)[:2]
-        xpybutil.conn.core.ReparentWindow(self.clientWindowID, self.frameWindowID, clientX, clientY)
+        xpybutil.conn.core.ReparentWindow(self.clientWindowID, self.frameWindowID, *self.innerGeometry.topLeft)
 
         #TODO: Keep these updated where appropriate!
         self.ewmhStates.clear()
@@ -696,6 +696,10 @@ class WindowFrame(object):
     @property
     def innerGeometry(self):
         return settings.theme.getClientGeometry(self)
+
+    @property
+    def geometry(self):
+        return Rect(self.x, self.y, self.width, self.height)
 
     @property
     def workspace(self):

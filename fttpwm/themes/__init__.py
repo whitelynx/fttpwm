@@ -10,6 +10,8 @@ import logging
 
 import xpybutil.ewmh as ewmh
 
+from ..utils.geometry import Rect
+
 
 logger = logging.getLogger("fttpwm.themes")
 
@@ -39,7 +41,7 @@ class BaseTheme(object):
                 )
 
     def getThemeValue(self, key, focused=False, statusBar=False):
-        normalVal = self.normal[key]
+        normalVal = self.normal.get(key)
 
         if focused:
             return self.focused.get(key, normalVal)
@@ -49,7 +51,7 @@ class BaseTheme(object):
 
         return normalVal
 
-    def getFrameSizes(self, frame):
+    def getFrameExtents(self, frame):
         """Retrieve the frame sizes appropriate for the given frame's window.
 
         Returns a tuple of frame sizes: (left, right, top, bottom)
@@ -62,17 +64,14 @@ class BaseTheme(object):
     def getClientGeometry(self, frame):
         """Retrieve the desired window geometry for the given frame's window, relative to the frame.
 
-        Returns a tuple: (x, y, width, height)
-
-        The ordering of the results is meant to follow the ordering of XMoveResizeWindow and the convention for window
-        geometry in X.
+        Returns a Rect.
 
         """
-        left, right, top, bottom = self.getFrameSizes(frame)
-        return left, top, (frame.width - left - right), (frame.height - top - bottom)
+        left, right, top, bottom = self.getFrameExtents(frame)
+        return Rect(left, top, (frame.width - left - right), (frame.height - top - bottom))
 
     def apply(self, frame):
-        ewmh.set_frame_extents(frame.clientWindowID, *self.getFrameSizes(frame))
+        ewmh.set_frame_extents(frame.clientWindowID, *self.getFrameExtents(frame))
         ewmh.set_wm_window_opacity(frame.frameWindowID, self.getFrameThemeValue(frame, 'opacity'))
 
     @abstractmethod

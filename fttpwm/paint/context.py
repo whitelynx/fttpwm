@@ -62,6 +62,10 @@ def drawBevel(context, rect, highlightColor=Color.rgba(1, 1, 1, 0.3), shadowColo
 
 def drawFill(context, rect, pattern, clip=True):
     with pushContext(context):
+        if pattern is None:
+            # If no pattern was given, assume we want to fill the area with transparent black.
+            pattern = cairo.SolidPattern(0, 0, 0, 0.0)
+
         # Set a matrix to position and scale the pattern so it covers the given rect.
         fillMatrix = cairo.Matrix()
         fillMatrix.translate(*rect.topLeft)

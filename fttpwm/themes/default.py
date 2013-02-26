@@ -25,15 +25,17 @@ class Default(BaseTheme):
             fontSize=10,
             fontSlant=fonts.slant.normal,
             fontWeight=fonts.weight.normal,
-            background=linearGradient(Direction.vertical, Color.rgb(.8, .7, .3), Color.rgb(.8, .5, .3)),
+            titlebarBackground=linearGradient(Direction.vertical, Color.rgb(.8, .7, .3), Color.rgb(.8, .5, .3)),
             innerBackground=None,
+            frameBackground=None,
             opacity=.7,
             tabSpacing=1,
             )
     focused = dict(
             textColor=Color.rgb(1, 1, 1),
-            background=linearGradient(Direction.vertical, Color.rgb(1, .9, 0), Color.rgb(1, .3, 0)),
+            titlebarBackground=linearGradient(Direction.vertical, Color.rgb(1, .9, 0), Color.rgb(1, .3, 0)),
             innerBackground=linearGradient(Direction.vertical, Color.rgba(0, 0, 0, .8), Color.rgba(0, 0, 0, .5)),
+            frameBackground=cairo.SolidPattern(1, .3, 0),
             opacity=1,
             )
     statusBar = dict(
@@ -53,19 +55,20 @@ class Default(BaseTheme):
 
     def paintTab(self, ctx, frame, tabGeom=None):
         GFTV = lambda x: self.getFrameThemeValues(frame, *x.split())
-        background, innerBackground, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = GFTV(
-                'background innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
+        titlebarBackground, innerBackground, textColor, fontFace, fontSlant, fontWeight, fontSize, titlebarHeight = \
+                GFTV(
+                'titlebarBackground innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
                 )
 
         font = fonts.getFont(fontFace, fontSlant, fontWeight)
 
         if not tabGeom:
-            tabGeom = Rect(0, 0, frame.width, titlebarHeight)
+            tabGeom = Rect(0, 0, frame.width - 1, titlebarHeight - 1)
         elif not isinstance(tabGeom, Rect):
             tabGeom = Rect(*tabGeom)
 
         # Draw titlebar background
-        drawFill(ctx, tabGeom, background)
+        drawFill(ctx, tabGeom, titlebarBackground)
 
         # Draw outer titlebar bevel
         drawBevel(ctx, tabGeom)
@@ -84,6 +87,12 @@ class Default(BaseTheme):
             drawText(ctx, frame.title, innerGeom, textColor, font, fontSize)
 
     def paintWindow(self, ctx, frame, titleGeom=None):
+        frameBackground, titlebarHeight = self.getFrameThemeValues(frame, 'frameBackground', 'titlebarHeight')
+
+        # Draw frame background
+        nonTitleArea = frame.geometry.shrink(0, titlebarHeight).move(0, titlebarHeight)
+        drawFill(ctx, nonTitleArea, frameBackground)
+
         self.paintTab(ctx, frame, titleGeom)
 
     def paintStatusBarBackground(self, ctx, bar):

@@ -6,6 +6,7 @@ Licensed under the MIT license; see the LICENSE file for details.
 
 """
 from abc import ABCMeta, abstractmethod
+import importlib
 import math
 
 import xpybutil
@@ -19,9 +20,19 @@ class BaseLayout(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self):
+    def __init__(self, id=''):
         self.logger = loggerFor(self)
         self.parentInfoKey = ''
+        self.id = id
+
+    @property
+    def layoutType(self):
+        return '{}.{}'.format(type(self).__module__, type(self).__name__)
+
+    @staticmethod
+    def loadLayoutType(layoutType):
+        module, cls = layoutType.rsplit('.', 1)
+        return getattr(importlib.import_module(module), cls)
 
     @abstractmethod
     def arrange(self, workspace):
@@ -33,17 +44,17 @@ class BaseLayout(object):
     @property
     def layoutInfoKey(self):
         cls = type(self)
-        return '{}/{}.{}'.format(self.parentInfoKey, cls.__name__, cls.__module__)
+        return '{}/{}.{}.{}'.format(self.parentInfoKey, cls.__module__, cls.__name__, self.id)
 
     def tabs(self, frame):
         return None
 
 
 class TilingLayout(BaseLayout):
-    def __init__(self, padding=0):
+    def __init__(self, padding=0, *args, **kwargs):
         self.padding = padding
 
-        super(TilingLayout, self).__init__()
+        super(TilingLayout, self).__init__(*args, **kwargs)
 
 
 class ListLayout(BaseLayout):

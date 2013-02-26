@@ -107,3 +107,14 @@ class Align(object):
                 self.width - textWidth - self.rightPadding - xBearing,
                 (self.height - textHeight) / 2 - yBearing
                 )
+
+
+fontCache = dict()
+
+
+def getFont(family, slant, weight):
+    try:
+        return fontCache[family, slant, weight]
+    except KeyError:
+        font = fontCache[family, slant, weight] = Font(family, slant, weight)
+        return font

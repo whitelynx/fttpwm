@@ -79,7 +79,7 @@ class ListLayout(BaseLayout):
 
     def onFramePositioned(self, index, frame, ws, frameCount):
         # By default, ensure all frames are visible
-        frame.onShow()
+        frame._doShow()
 
     def sortedFrames(self, ws):
         return sorted(ws.viewableFrames, key=lambda frame: frame.getLayoutInfo(self).get('index', float('inf')))

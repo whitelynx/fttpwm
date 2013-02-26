@@ -51,6 +51,13 @@ class WindowFrame(object):
     """A Cairo-backed titlebar and window frame.
 
     """
+    #FIXME: This class is huge and monolithic. It'd be nice if we could refactor it to separate the Frame logic from
+    # the Client logic; this would allow us to effectively manage frameless windows, as well as to reuse the Frame
+    # for panes in static tiling.
+
+    #TODO: Implement "shaded" mode; also, use this to display tabs/titlebars for hidden windows in layouts like
+    # TabbedLayout and StackedLayout.
+
     def __init__(self, clientWindowID):
         self.frameWindowID = xcb.NONE
         self.clientWindowID = clientWindowID
@@ -142,6 +149,7 @@ class WindowFrame(object):
             xpybutil.event.disconnect('UnmapNotify', self.frameWindowID)
 
     def activateBindings(self):
+        #FIXME: What is this for, and do we still need it?
         pass
         #bindMouse({
         #        #'1': FloatingBindings.raiseAndMoveWindow,
@@ -162,9 +170,21 @@ class WindowFrame(object):
 
         if self.initialized:
             self.ewmhStates.discard(EWMHWindowState.Hidden)
-            self.requestShow(self)
+            self.show()
 
     def hide(self):
+        """Hide this window. (both the frame and the client)
+
+        This does not set the EWMH state; to do that, use `minimize`. (which then calls this method) To quote the EWMH
+        spec:
+
+            The second option [for implementing virtual desktops] is to keep all managed windows as children of the
+            root window and unmap the frames of those which are not on the current desktop. Unmapped windows should be
+            placed in IconicState, according to the ICCCM. Windows which are actually iconified or minimized should
+            have the _NET_WM_STATE_HIDDEN property set, to communicate to pagers that the window should not be
+            represented as "onscreen."
+
+        """
         self.logger.trace("hide: Hiding %r.", self)
 
         self.icccmState = icccm.State.Iconic
@@ -180,32 +200,51 @@ class WindowFrame(object):
 
         xpybutil.conn.flush()
 
-    def onShow(self):
-        self.logger.trace("onShow: Showing %r.", self)
+    def show(self):
+        """Request that this window be shown.
+
+        """
+        self.logger.debug("show: Requesting show for %r.", self)
+        self.requestShow(self)
+
+    def _doShow(self):
+        """Show this frame window.
+
+        Most code should NOT call this; instead call `show`. This will map the client and frame windows, regardless of
+        whether or not we're on the correct workspace.
+
+        This should ONLY be called by the following code:
+
+        - the current workspace's layout, when it's arranging its windows (see `ListLayout.onFramePositioned`,
+          `FloatingLayout.arrange`, etc.)
+        - `self.onClientMapRequest` ...though this is debatable, and may well be incorrect.
+
+        """
+        self.logger.trace("_doShow: Showing %r.", self)
 
         # If this window is viewable, map it.
         if self.viewable:
             cookies = list()
 
             if not self.clientMapped:
-                self.logger.debug("onShow: Mapping client window.")
+                self.logger.debug("_doShow: Mapping client window.")
                 cookies.append(xpybutil.conn.core.MapWindowChecked(self.clientWindowID))
 
             if not self.frameMapped:
-                self.logger.debug("onShow: Mapping frame window.")
+                self.logger.debug("_doShow: Mapping frame window.")
                 cookies.append(xpybutil.conn.core.MapWindowChecked(self.frameWindowID))
 
             for cookie in cookies:
                 try:
                     cookie.check()
                 except:
-                    self.logger.exception("hide: Error unmapping %r!", self)
+                    self.logger.exception("_doShow: Error mapping %r or its client!", self)
 
             self.icccmState = icccm.State.Normal
             #FIXME: EWMH state!
 
         else:
-            self.logger.warn("onShow called, but frame is not viewable!")
+            self.logger.warn("_doShow called, but frame is not viewable!")
 
     def moveResize(self, x, y, width, height, flush=True):
         if (self.x, self.y, self.width, self.height) == (x, y, width, height):
@@ -223,11 +262,27 @@ class WindowFrame(object):
             xpybutil.conn.flush()
 
     def focus(self, flush=True):
+        """Focus this window.
+
+        If this window is not on the current workspace, this will most likely fail somehow. To switch to a window's
+        workspace and then focus that window, call `frame.activate()` instead.
+
+        """
         if not self.focused:
             singletons.wm.focusWindow(self)
 
         if flush:
             xpybutil.conn.flush()
+
+    def activate(self, flush=True):
+        """Raise and focus this window, switching to its workspace first if needed.
+
+        """
+        if self.workspace != singletons.wm.workspaces.current:
+            singletons.wm.workspaces.current = self.workspace
+
+        self.raise_(False)
+        self.focus(flush)
 
     def raise_(self, flush=True):
         xpybutil.conn.core.ConfigureWindow(self.frameWindowID, *convertAttributes({
@@ -331,7 +386,7 @@ class WindowFrame(object):
 
         if self.icccmState == icccm.State.Iconic:
             # If the window is mapping itself after being in the Iconic state, we should show the frame too.
-            self.onShow()
+            self._doShow()
             return
 
         elif self.icccmState != icccm.State.Withdrawn:
@@ -451,6 +506,7 @@ class WindowFrame(object):
         #TODO: Respect more of the above hints!
 
         #TODO: Honor the initial value of _NET_WM_STATE! (ewmh.get_wm_state)
+        #TODO: Honor the initial value of _NET_WM_DESKTOP! (ewmh.get_wm_desktop)
 
         # Default to showing the window normally.
         initialState = icccm.State.Normal
@@ -471,7 +527,7 @@ class WindowFrame(object):
             # The window wants to be shown initially.
             self.icccmState = icccm.State.Normal
             self.ewmhStates.discard(EWMHWindowState.Hidden)
-            self.requestShow(self)
+            self.show()
 
         # If there's an icon window, hide it; we don't use it.
         if icccmFlags['IconWindow']:
@@ -514,7 +570,7 @@ class WindowFrame(object):
 
         if self.viewable:
             self.ewmhStates.discard(EWMHWindowState.Hidden)
-            self.requestShow(self)
+            self.show()
 
         else:
             self.logger.warn("onClientMapNotify: We are not viewable! Hiding.")
@@ -522,13 +578,25 @@ class WindowFrame(object):
             self.hide()
 
     def onClientUnmapNotify(self, event):
+        """Handle UnmapNotify events for the client window.
+
+        If the client window was withdrawn, we remove the _NET_WM_STATE and _NET_WM_DESKTOP properties.
+
+        From the EWMH spec sections on _NET_WM_STATE and _NET_WM_DESKTOP (the language is identical for both):
+
+            The Window Manager should remove the property whenever a window is withdrawn but it should leave the
+            property in place when it is shutting down, e.g. in response to losing ownership of the WM_Sn manager
+            selection.
+
+        """
         self.logger.debug("onClientUnmapNotify: %r", event.__dict__)
         #TODO: Only do most of this stuff if the window wasn't unmapped because of switching workspaces!
 
         self.clientMapped = False
 
-        if self.icccmState != icccm.State.Iconic:
-            # Remove the window's _NET_WM_DESKTOP property.
+        if self.icccmState == icccm.State.Withdrawn:
+            # Remove the window's _NET_WM_STATE and _NET_WM_DESKTOP properties.
+            xpybutil.conn.core.DeleteProperty(self.clientWindowID, atom('_NET_WM_STATE'))
             xpybutil.conn.core.DeleteProperty(self.clientWindowID, atom('_NET_WM_DESKTOP'))
 
             self.onClosed()
@@ -574,6 +642,7 @@ class WindowFrame(object):
 
         self.icccmState = icccm.State.Withdrawn
 
+        # Emit 'closed' signal.
         self.closed()
 
     ## WM events ####
@@ -672,6 +741,10 @@ class WindowFrame(object):
         return EWMHWindowState.Focused in self.ewmhStates
 
     @property
+    def visible(self):
+        return self.icccmState in (icccm.State.Withdrawn, icccm.State.Iconic)
+
+    @property
     def valid(self):
         return self.initialized and not self.clientDestroyed
 
@@ -728,7 +801,7 @@ class WindowFrame(object):
 
     def paint(self):
         if not self.initialized or self.frameWindowID is None or self.clientWindowID is None \
-                or self.icccmState == icccm.State.Withdrawn or self.context is None:
+                or self.icccmState in (icccm.State.Withdrawn, icccm.State.Iconic) or self.context is None:
             # Skip painting.
             return
 
@@ -736,20 +809,33 @@ class WindowFrame(object):
 
         tabs = self.workspace.layout.tabs(self)
         if tabs:
+            self.logger.debug("paint: painting tabs in frame %r", self)
             tabSpacing, titlebarHeight = settings.theme.getFrameThemeValues(self, 'tabSpacing', 'titlebarHeight')
 
             tabWidth = (self.width - (tabSpacing * (len(tabs) - 1))) / len(tabs)
             tabX = 0
 
-            settings.theme.paintWindow(self.context, self)
+            # Draw the window border and our tab.
+            ourIndex = tabs.index(self)
+            ourTabGeom = [tabWidth * ourIndex, 0, tabWidth, titlebarHeight]
+            settings.theme.paintWindow(self.context, self, ourTabGeom)
+
+            # Draw other tabs.
             for tabbedFrame in tabs:
+                if tabbedFrame is self:
+                    # We already painted the tab for this frame; skip it.
+                    continue
+
                 tabGeom = [tabX, 0, tabWidth, titlebarHeight]
+                self.logger.debug("paint: painting tab for %sframe %r at %r",
+                        'focused ' if tabbedFrame.focused else '', tabbedFrame, tabGeom)
 
                 settings.theme.paintTab(self.context, tabbedFrame, tabGeom)
 
                 tabX += tabWidth + tabSpacing
 
         else:
+            self.logger.debug("paint: painting full window for frame %r", self)
             settings.theme.paintWindow(self.context, self)
 
         self.surface.flush()

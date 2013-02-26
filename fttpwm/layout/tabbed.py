@@ -19,7 +19,7 @@ class TabbedMaximized(ListLayout, TilingLayout):
         self.frameHeight = ws.innerHeight - 2 * self.padding
 
         if ws.focusedWindow is not None:
-            ws.focusedWindow.onShow()
+            ws.focusedWindow._doShow()
 
     def framePosition(self, index, frame, ws, frameCount):
         return (self.frameX, self.frameY, self.frameWidth, self.frameHeight)
@@ -31,12 +31,15 @@ class TabbedMaximized(ListLayout, TilingLayout):
             prevFrame.hide()
 
         if curFrame:
-            curFrame.onShow()
+            curFrame._doShow()
 
     def onFramePositioned(self, index, frame, ws, frameCount):
         # Only show the currently-focused frame.
-        if frame is not ws.focusedWindow:
-            self.logger.debug("onFramePositioned: Hiding frame: %r", frame)
+        if frame is ws.focusedWindow:
+            self.logger.debug("onFramePositioned: Showing focused frame: %r", frame)
+            frame._doShow()
+        else:
+            self.logger.debug("onFramePositioned: Hiding non-focused frame: %r", frame)
             frame.hide()
 
     def tabs(self, frame):

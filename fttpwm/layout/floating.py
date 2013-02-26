@@ -17,4 +17,4 @@ class Floating(BaseLayout):
 
         # Ensure all frames are visible
         for frame in frames:
-            frame.onShow()
+            frame._doShow()

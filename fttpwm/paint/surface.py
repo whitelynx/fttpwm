@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """FTTPWM: Cairo surface helper classes
 
-Copyright (c) 2012 David H. Bronke
+Copyright (c) 2012-2013 David H. Bronke
 Licensed under the MIT license; see the LICENSE file for details.
 
 """

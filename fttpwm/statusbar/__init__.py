@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """FTTPWM: Status bar
 
 Copyright (c) 2012-2013 David H. Bronke

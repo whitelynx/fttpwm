@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""FTTPWM: Font helper classes
+
+Copyright (c) 2012-2013 David H. Bronke
+Licensed under the MIT license; see the LICENSE file for details.
+
+"""
 from argparse import Namespace
 
 import cairo

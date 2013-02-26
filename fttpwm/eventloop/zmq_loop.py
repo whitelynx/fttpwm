@@ -45,7 +45,7 @@ class ZMQEventLoop(BaseEventLoop):
         """
         if allowDuplicates:
             self.io_loop.add_callback(callback)
-        else:
+        elif callback not in self.idleCallbacks:
             def callCB():
                 self.idleCallbacks.discard(callback)
                 callback()

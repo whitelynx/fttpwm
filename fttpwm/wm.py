@@ -125,7 +125,7 @@ class WM(object):
         try:
             frame.onGainedFocus()
         except:
-            logger.exception("focusWindow: Error calling onGainedFocus on %r.", frame)
+            logger.exception("_doFocus: Error calling onGainedFocus on %r.", frame)
 
         xpybutil.conn.flush()
 
@@ -148,10 +148,10 @@ class WM(object):
             try:
                 self.lastFocusedFrame.onLostFocus()
             except:
-                logger.exception("focusWindow: Error calling onLostFocus on %r.", self.lastFocusedFrame)
+                logger.exception("focusedWindow.setter: Error calling onLostFocus on %r.", self.lastFocusedFrame)
 
         if frame is None and self.workspaces.current.focusedWindow is not None:
-            logger.warn("Setting workspace %r's focused window to None! (used to be %r)",
+            logger.warn("focusedWindow.setter: Setting workspace %r's focused window to None! (used to be %r)",
                     self.workspaces.current, self.workspaces.current.focusedWindow)
 
         self.workspaces.current.focusedWindow = frame

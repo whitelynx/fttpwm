@@ -16,6 +16,7 @@ from xcb.xproto import MappingNotifyEvent
 
 import xpybutil
 import xpybutil.event
+import xpybutil.util
 import xpybutil.window
 
 from .settings import settings
@@ -133,6 +134,35 @@ class XConnection(object):
 
         xpybutil.conn.core.ChangeProperty(mode, windowID, property, type, format, data_len, data)
 
+    def getProperty(self, windowID, property, type=xcb.xproto.GetPropertyType.Any, delete=False, data_offset=None,
+            data_len=None, cb=None):
+
+        data_offset = 0 if data_offset is None else data_offset
+        data_len = (2 ** 32 - 1) if data_len is None else data_len
+
+        if isinstance(property, basestring):
+            property = xpybutil.util.get_atom(property)
+
+        cookie = xpybutil.conn.core.GetProperty(delete, windowID, property, type, data_offset, data_len)
+
+        if cb:
+            def handleReply():
+                error = None
+                value = None
+
+                try:
+                    value = xpybutil.util.get_property_value(cookie.reply())
+                except Exception as ex:
+                    error = ex
+
+                cb(value, error)
+
+            singletons.eventloop.callWhenIdle(handleReply)
+
+        else:
+            # If no callback was passed in, block until we get a reply, then return it.
+            return xpybutil.util.get_property_value(cookie.reply())
+
     def printXCBExc(self, error):
         logger.exception("Protocol error %s received!", error.__class__.__name__)
 
@@ -186,11 +216,13 @@ class XConnection(object):
                     # update the stored keyboard mapping.
 
                     if e.request == Mapping.Keyboard:
+                        logger.info("Got MappingNotifyEvent with request=Keyboard; queueing updateKeyboardMapping().")
                         if self.pendingUpdateKeyboardMapping is None:
                             singletons.eventloop.callWhenIdle(self.updateKeyboardMapping)
                         self.pendingUpdateKeyboardMapping = e
 
                     elif e.request == Mapping.Modifier:
+                        logger.info("Got MappingNotifyEvent with request=Modifier; queueing updateModifierMapping().")
                         if self.pendingUpdateModifierMapping is None:
                             singletons.eventloop.callWhenIdle(self.updateModifierMapping)
                         self.pendingUpdateModifierMapping = e

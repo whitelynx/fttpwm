@@ -9,8 +9,9 @@ import cairo
 
 from ..paint import fonts
 from ..paint.color import Color
-from ..paint.context import pushContext
+from ..paint.context import pushContext, drawBevel, drawFill, drawText
 from ..paint.gradients import linearGradient, Direction
+from ..utils.geometry import Rect
 
 from . import BaseTheme
 
@@ -56,100 +57,31 @@ class Default(BaseTheme):
                 'background innerBackground textColor fontFace fontSlant fontWeight fontSize titlebarHeight'
                 )
 
+        font = fonts.getFont(fontFace, fontSlant, fontWeight)
+
         if not tabGeom:
-            tabGeom = [0, 0, frame.width, titlebarHeight]
-
-        tabWidth, tabHeight = tabGeom[2:4]
-
-        ctx.rectangle(*tabGeom)
-        ctx.clip()
+            tabGeom = Rect(0, 0, frame.width, titlebarHeight)
+        elif not isinstance(tabGeom, Rect):
+            tabGeom = Rect(*tabGeom)
 
         # Draw titlebar background
-        background.set_matrix(cairo.Matrix(
-                xx=1 / float(tabWidth),
-                yy=1 / float(tabHeight)
-                ))
-        ctx.set_source(background)
-        ctx.paint()
+        drawFill(ctx, tabGeom, background)
 
         # Draw outer titlebar bevel
-        ctx.set_line_width(1)
-        ctx.set_line_join(cairo.LINE_JOIN_MITER)
-        ctx.set_line_cap(cairo.LINE_CAP_SQUARE)
+        drawBevel(ctx, tabGeom)
 
-        # Line up the context so drawing at integral coordinates is aligned with pixels.
         with pushContext(ctx):
-            ctx.set_matrix(self.strokeMatrix)
+            innerGeom = tabGeom.shrink(36, 4)
 
-            # ...highlight
-            ctx.move_to(0, tabHeight - 1)
-            ctx.line_to(0, 0)
-            ctx.line_to(tabWidth - 1, 0)
-            ctx.set_source_rgba(1, 1, 1, 0.3)
-            ctx.stroke()
-
-            # ...shadow
-            ctx.move_to(tabWidth, 1)
-            ctx.line_to(tabWidth, tabHeight)
-            ctx.line_to(1, tabHeight)
-            ctx.set_source_rgba(0, 0, 0, 0.3)
-            ctx.stroke()
-
-            # Draw inner bevel
             if innerBackground is not None:
-                # ...highlight
-                ctx.move_to(tabWidth - 18, 3)
-                ctx.line_to(tabWidth - 18, tabHeight - 2)
-                ctx.line_to(19, tabHeight - 2)
-                ctx.set_source_rgba(1, 1, 1, 0.3)
-                ctx.stroke()
-
-                # ...shadow
-                ctx.move_to(17, tabHeight - 3)
-                ctx.line_to(17, 1)
-                ctx.line_to(tabWidth - 18, 1)
-                ctx.set_source_rgba(0, 0, 0, 0.3)
-                ctx.stroke()
-
-                ctx.restore()
-                ctx.save()
+                # Draw inner bevel
+                drawBevel(ctx, innerGeom.grow(1, 1), sunken=True)
 
                 # Draw title (inner) background
-                innerBGMatrix = cairo.Matrix()
-                innerBGMatrix.translate(2 + 16, 2)
-                innerBGMatrix.scale(
-                        tabWidth - 4 - 32,
-                        tabHeight - 4,
-                        )
-                innerBGMatrix.invert()
-
-                innerBackground.set_matrix(innerBGMatrix)
-                ctx.set_source(innerBackground)
-
-            with pushContext(ctx):
-                # Clip the remainder of the background drawing to the title area.
-                ctx.rectangle(2 + 16, 2, tabWidth - 4 - 32, tabHeight - 4)
-                ctx.clip()
-
-                if innerBackground is not None:
-                    # Finish painting the inner background.
-                    ctx.paint()
-
-            # Set up title text drawing
-            ctx.set_source_rgba(*textColor)
-            ctx.select_font_face(fontFace, fontSlant, fontWeight)
-            ctx.set_font_options(fonts.options.fontOptions)
-            ctx.set_font_size(fontSize)
+                drawFill(ctx, innerGeom, innerBackground)
 
             # Draw title text
-            title = frame.title
-            width = tabWidth
-            xBearing, yBearing, textWidth, textHeight = ctx.text_extents(title)[:4]
-            ctx.move_to(
-                    (width - textWidth) / 2 - xBearing,
-                    (tabHeight - textHeight) / 2 - yBearing
-                    )
-            ctx.show_text(title)
+            drawText(ctx, frame.title, innerGeom, textColor, font, fontSize)
 
     def paintWindow(self, ctx, frame, titleGeom=None):
         self.paintTab(ctx, frame, titleGeom)

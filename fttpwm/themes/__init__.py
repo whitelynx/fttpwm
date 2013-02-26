@@ -10,8 +10,6 @@ import logging
 
 import xpybutil.ewmh as ewmh
 
-import cairo
-
 
 logger = logging.getLogger("fttpwm.themes")
 
@@ -21,8 +19,6 @@ class BaseTheme(object):
 
     """
     __metaclass__ = ABCMeta
-
-    strokeMatrix = cairo.Matrix(x0=0.5, y0=0.5)
 
     def __init__(self):
         self.currentFrame = None

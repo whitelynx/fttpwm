@@ -93,11 +93,11 @@ FTTPWM's code was constructed with help from a variety of sources:
 - The [Xlib Programming Manual][], converted to HTML by [Christophe Tronche][], has been absolutely indispensible in
   understanding some of the more hairy aspects of programming using X11.
 - Several [specifications from freedesktop.org][] have been used, whenever appropriate:
-    - [XDG Base Directory Specification] version 0.6
-    - [Inter-Client Communication Conventions Manual] version 2.0
-    - [Extended Window Manager Hints] version 1.4.draft-2
-    - [Desktop Entry Specification] version 1.0
-    - [Desktop Application Autostart Specification] version 0.5
+    - [XDG Base Directory Specification][] version 0.6
+    - [Inter-Client Communication Conventions Manual][] version 2.0
+    - [Extended Window Manager Hints][] version 1.4.draft-2
+    - [Desktop Entry Specification][] version 1.0
+    - [Desktop Application Autostart Specification][] version 0.5
     - [D-Bus][] version 0.19 - has been pretty much the only guide for the D-Bus implementation in
       FTTPWM; I've looked at the existing libraries before, but I didn't reference them when writing this
       implementation.
